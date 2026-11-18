@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VTrialom — Virtual Try-On Engine (Dev)</title>
+    <style>
+      /* ------------------------------------------------------------------ */
+      /* Reset & base                                                         */
+      /* ------------------------------------------------------------------ */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        background: #0d0d0d;
+        color: #e8e8e8;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+        min-height: 100dvh;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 0;
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* Header                                                               */
+      /* ------------------------------------------------------------------ */
+      header {
+        background: #111;
+        border-bottom: 1px solid #2a2a2a;
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      header h1 {
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #fff;
+      }
+
+      header .badge {
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: #2563eb;
+        color: #fff;
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* Main layout                                                          */
+      /* ------------------------------------------------------------------ */
+      main {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 0;
+        overflow: hidden;
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* Viewport — the engine renders here                                   */
+      /* ------------------------------------------------------------------ */
+      #viewport {
+        position: relative;
+        background: #000;
+        overflow: hidden;
+      }
+
+      #tryon-container {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* Placeholder shown before camera starts */
+      #camera-placeholder {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        color: #555;
+        font-size: 0.9rem;
+        pointer-events: none;
+      }
+
+      #camera-placeholder svg {
+        opacity: 0.4;
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* Debug panel                                                          */
+      /* ------------------------------------------------------------------ */
+      #debug-panel {
+        background: #111;
+        border-left: 1px solid #2a2a2a;
+        padding: 20px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        overflow-y: auto;
+      }
+
+      .panel-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .panel-label {
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #666;
+      }
+
+      /* Status pill */
+      #status-text {
+        font-size: 0.8rem;
+        color: #a3e4a3;
+        background: #0f2010;
+        border: 1px solid #1a4020;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        word-break: break-all;
+        min-height: 60px;
+      }
+
+      /* FPS counter */
+      #fps-counter {
+        font-size: 2rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: #60a5fa;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      }
+
+      /* Phase indicator */
+      .phase-info {
+        font-size: 0.75rem;
+        color: #888;
+        line-height: 1.6;
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* Controls                                                             */
+      /* ------------------------------------------------------------------ */
+      #controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      button {
+        padding: 10px 16px;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.15s, transform 0.1s;
+      }
+
+      button:active { transform: scale(0.97); }
+      button:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+      #btn-start {
+        background: #2563eb;
+        color: #fff;
+      }
+
+      #btn-stop {
+        background: #1f1f1f;
+        color: #bbb;
+        border: 1px solid #333;
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* Footer                                                               */
+      /* ------------------------------------------------------------------ */
+      footer {
+        background: #0a0a0a;
+        border-top: 1px solid #1e1e1e;
+        padding: 8px 24px;
+        font-size: 0.7rem;
+        color: #444;
+        display: flex;
+        justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>VTrialom Try-On Engine</h1>
+      <span class="badge">Phase 0</span>
+      <span class="badge" style="background:#1a3a1a; color:#6ed86e;">Dev Build</span>
+    </header>
+
+    <main>
+      <!-- Camera + engine output viewport -->
+      <div id="viewport">
+        <div id="tryon-container"></div>
+        <div id="camera-placeholder">
+          <!-- Camera icon SVG -->
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.361a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+          </svg>
+          <span>Press Start Camera to begin</span>
+        </div>
+      </div>
+
+      <!-- Debug panel -->
+      <aside id="debug-panel">
+        <div class="panel-section">
+          <div class="panel-label">Engine Status</div>
+          <div id="status-text">Engine state: uninitialised</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-label">Render Loop</div>
+          <div id="fps-counter">– FPS</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-label">Controls</div>
+          <div id="controls">
+            <button id="btn-start">▶ Start Camera</button>
+            <button id="btn-stop" disabled>■ Stop Camera</button>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-label">Current Phase</div>
+          <div class="phase-info">
+            <strong>Phase 0 — Architecture &amp; Setup</strong><br>
+            Establishes the project skeleton, engine lifecycle, camera manager,
+            and public API contract.<br><br>
+            <em>Next: Phase 1 — Body Tracking</em>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-label">What to verify</div>
+          <div class="phase-info">
+            ✓ App loads without errors<br>
+            ✓ Start Camera → browser asks for permission<br>
+            ✓ FPS counter updates (~30/s)<br>
+            ✓ Stop Camera → state returns to ready<br>
+            ✓ No console errors
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      <span>VTrialom Try-On Engine © 2024</span>
+      <span>localhost:5173 — Vite + TypeScript</span>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+
