@@ -31,13 +31,15 @@ import {
   EngineState,
   StateChangeEvent,
   EngineErrorEvent,
-  GarmentMetadata,
+  LoadedGarment,
   SegmentationResult,
 } from "./types.js";
 import { CameraManager } from "../camera/CameraManager.js";
 import { PoseTracker, type TrackingResult } from "../tracking/PoseTracker.js";
 import { PersonSegmenter } from "../segmentation/PersonSegmenter.js";
 import { OcclusionManager } from "../segmentation/OcclusionManager.js";
+import { GarmentLoader, type LoadGarmentOptions } from "../garments/GarmentLoader.js";
+import { GarmentFitter } from "../fitting/GarmentFitter.js";
 
 // ---------------------------------------------------------------------------
 // Public event map
@@ -47,17 +49,12 @@ export interface TryOnEngineEventMap {
   error: CustomEvent<EngineErrorEvent>;
   trackingresult: CustomEvent<TrackingResult>;
   segmentationresult: CustomEvent<SegmentationResult>;
+  garmentloaded: CustomEvent<LoadedGarment>;
+  fittingresult: CustomEvent<import("./types.js").FittingResult>;
   framerendered: CustomEvent<{ timestampMs: number }>;
 }
 
-// ---------------------------------------------------------------------------
-// Garment load options (stub until Phase 3)
-// ---------------------------------------------------------------------------
-export interface LoadGarmentOptions {
-  id: string;
-  assetUrl: string;
-  name?: string;
-}
+export type { LoadGarmentOptions };
 
 // ---------------------------------------------------------------------------
 // TryOnEngine
@@ -72,10 +69,11 @@ export class TryOnEngine extends EventTarget {
   private _tracker: PoseTracker | null = null;
   private _segmenter: PersonSegmenter | null = null;
   private _occlusionManager: OcclusionManager | null = null;
-  // private _garmentLoader: GarmentLoader | null = null; // Phase 3
+  private _garmentLoader = new GarmentLoader();
+  private _fitter = new GarmentFitter();
   // private _compositor: Compositor | null = null;       // Phase 6
 
-  private _activeGarment: GarmentMetadata | null = null;
+  private _activeGarment: LoadedGarment | null = null;
 
   // Single unified render loop
   private _animFrameId: number | null = null;
@@ -93,6 +91,10 @@ export class TryOnEngine extends EventTarget {
   };
 
   private _latestSegmentationResult: SegmentationResult | null = null;
+  private _latestFittingResult: import("./types.js").FittingResult | null = null;
+
+  private _outputWidth = 640;
+  private _outputHeight = 480;
 
   constructor(config: EngineConfig) {
     super();
@@ -157,11 +159,26 @@ export class TryOnEngine extends EventTarget {
     }
   }
 
-  async loadGarment(_options: LoadGarmentOptions): Promise<void> {
+  async loadGarment(options: LoadGarmentOptions): Promise<LoadedGarment> {
     this._assertState(["ready", "running"], "loadGarment");
-    console.warn(
-      "[TryOnEngine] loadGarment() is a stub — full implementation in Phase 3."
-    );
+    try {
+      const garment = await this._garmentLoader.loadGarment(options);
+      this._activeGarment = garment;
+      this.dispatchEvent(
+        new CustomEvent<LoadedGarment>("garmentloaded", { detail: garment })
+      );
+      return garment;
+    } catch (err) {
+      this._emitError("GARMENT_LOAD_FAILED", `Failed to load garment "${options.id}".`, err);
+      throw err;
+    }
+  }
+
+  setOutputDimensions(width: number, height: number): void {
+    if (width > 0 && height > 0) {
+      this._outputWidth = width;
+      this._outputHeight = height;
+    }
   }
 
   dispose(): void {
@@ -173,6 +190,7 @@ export class TryOnEngine extends EventTarget {
     this._occlusionManager = null;
     this._camera?.dispose();
     this._camera = null;
+    this._garmentLoader.clearCache();
     this._activeGarment = null;
     this._latestSegmentationResult = null;
     this._transitionTo("disposed");
@@ -200,8 +218,12 @@ export class TryOnEngine extends EventTarget {
     };
   }
 
-  get activeGarment(): GarmentMetadata | null {
+  get activeGarment(): LoadedGarment | null {
     return this._activeGarment;
+  }
+
+  get garmentLoader(): GarmentLoader {
+    return this._garmentLoader;
   }
 
   get videoElement(): HTMLVideoElement | null {
@@ -218,6 +240,10 @@ export class TryOnEngine extends EventTarget {
 
   get latestSegmentationResult(): SegmentationResult | null {
     return this._latestSegmentationResult;
+  }
+
+  get latestFittingResult(): import("./types.js").FittingResult | null {
+    return this._latestFittingResult;
   }
 
   // =========================================================================
@@ -261,8 +287,9 @@ export class TryOnEngine extends EventTarget {
    *   1. Submit video frame to PoseTracker (33 body landmarks)
    *   2. Submit video frame to PersonSegmenter (foreground person mask)
    *   3. Perform Occlusion Analysis (arms/hands vs torso)
-   *   4. Update diagnostics (FPS, latency, states)
-   *   5. Dispatch typed events
+   *   4. Garment fitting (map garment anchors → canvas transform)
+   *   5. Update diagnostics (FPS, latency, states)
+   *   6. Dispatch typed events
    */
   private _onFrame(timestampMs: number): void {
     const video = this._camera?.videoElement;
@@ -293,6 +320,32 @@ export class TryOnEngine extends EventTarget {
       timestampMs,
     };
     this._latestSegmentationResult = segResult;
+
+    // 4. Garment fitting — only when a garment is loaded and body is tracked
+    if (
+      this._activeGarment &&
+      tracking?.poseDetected &&
+      tracking.bodyGeometry &&
+      video
+    ) {
+      const targetW = this._outputWidth > 0 ? this._outputWidth : (video.videoWidth || 640);
+      const targetH = this._outputHeight > 0 ? this._outputHeight : (video.videoHeight || 480);
+
+      const fittingResult = this._fitter.fit(
+        tracking.bodyGeometry,
+        this._activeGarment,
+        targetW,
+        targetH,
+      );
+      this._latestFittingResult = fittingResult;
+      this.dispatchEvent(
+        new CustomEvent<import("./types.js").FittingResult>("fittingresult", {
+          detail: fittingResult,
+        })
+      );
+    } else if (!this._activeGarment) {
+      this._latestFittingResult = null;
+    }
 
     // 4. Update diagnostics
     this._diagnostics.frameCount++;

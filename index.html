@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VTrialom — Virtual Try-On Engine (Phase 2)</title>
+    <title>VTrialom — Virtual Try-On Engine (Phase 4: Garment Fitting)</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -34,11 +34,12 @@
         background: #2563eb; color: #fff;
       }
       .badge.green { background: #1a3a1a; color: #6ed86e; }
+      .badge.purple { background: #3b1d54; color: #d8b4fe; }
 
       /* ---- Main layout ---- */
       main {
         display: grid;
-        grid-template-columns: 1fr 320px;
+        grid-template-columns: 1fr 340px;
         overflow: hidden;
       }
 
@@ -98,16 +99,59 @@
         border-radius: 6px; padding: 6px 8px; text-align: center;
       }
       .metric-value {
-        font-size: 1.25rem; font-weight: 800;
+        font-size: 1.15rem; font-weight: 800;
         font-variant-numeric: tabular-nums;
         color: #60a5fa; font-family: monospace;
         line-height: 1.1;
       }
       .metric-label { font-size: 0.55rem; color: #666; margin-top: 2px; text-transform: uppercase; }
 
-      #pose-state {
+      /* Garment selector buttons */
+      #garment-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .garment-btn {
+        background: #18181b;
+        color: #d1d5db;
+        border: 1px solid #27272a;
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 0.75rem;
+        text-align: left;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: all 0.15s ease;
+      }
+      .garment-btn:hover {
+        background: #27272a;
+        color: #fff;
+        border-color: #3b82f6;
+      }
+      .garment-btn.active {
+        background: #1e3a8a;
+        border-color: #3b82f6;
+        color: #93c5fd;
+        font-weight: 600;
+      }
+
+      /* Garment info panel */
+      #garment-info {
+        background: #161616;
+        border: 1px solid #242424;
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 0.68rem;
+        font-family: monospace;
+      }
+
+      /* Pose & Fitting state boxes */
+      #pose-state, #fitting-state, #occlusion-state {
         font-size: 0.72rem; font-weight: 600; color: #555;
-        padding: 4px 8px; background: #161616; border-radius: 4px;
+        padding: 5px 8px; background: #161616; border-radius: 4px;
         border: 1px solid #242424; font-family: monospace;
       }
 
@@ -135,16 +179,10 @@
       }
       .toggle-row input[type=checkbox] { accent-color: #3b82f6; cursor: pointer; }
 
-      /* Occlusion state box */
-      #occlusion-state {
-        background: #161616; border: 1px solid #242424;
-        border-radius: 6px; padding: 6px 10px; font-family: monospace; font-size: 0.68rem;
-      }
-
       /* Landmark list */
       #landmark-list { font-family: monospace; font-size: 0.65rem; }
       .lm-row {
-        display: grid; grid-template-columns: 80px 1fr;
+        display: grid; grid-template-columns: 85px 1fr;
         gap: 4px; padding: 2px 0; border-bottom: 1px solid #1a1a1a;
         align-items: center;
       }
@@ -162,8 +200,9 @@
   <body>
     <header>
       <h1>VTrialom Try-On Engine</h1>
-      <span class="badge">Phase 2</span>
-      <span class="badge green">Segmentation &amp; Occlusion</span>
+      <span class="badge">Phase 4</span>
+      <span class="badge purple">Real-time Garment Fitting</span>
+      <span class="badge green">Ready</span>
     </header>
 
     <main>
@@ -174,7 +213,7 @@
           <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.361a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
           </svg>
-          <span>Press Start to initialize tracking and segmentation</span>
+          <span>Press Start to initialize tracking and live garment fitting</span>
         </div>
       </div>
 
@@ -187,7 +226,19 @@
         </div>
 
         <div class="panel-section">
-          <div class="panel-label">Performance (FPS &amp; Inference)</div>
+          <div class="panel-label">Garment Catalog (Switch live)</div>
+          <div id="garment-buttons"></div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-label">Active Garment Metadata</div>
+          <div id="garment-info">
+            <span style="color:#555">No garment loaded yet</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-label">Performance (FPS &amp; Latency)</div>
           <div class="metrics-row">
             <div class="metric-box">
               <div class="metric-value" id="fps-counter">–</div>
@@ -205,13 +256,27 @@
         </div>
 
         <div class="panel-section">
-          <div class="panel-label">Tracking &amp; Body State</div>
-          <div id="pose-state">–</div>
+          <div class="panel-label">Fitting Real-time Transform</div>
+          <div class="metrics-row">
+            <div class="metric-box">
+              <div class="metric-value" id="fitting-scale" style="color:#a78bfa">–</div>
+              <div class="metric-label">Scale</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-value" id="fitting-rotation" style="color:#a78bfa">–</div>
+              <div class="metric-label">Rot deg</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-value" id="fitting-confidence" style="color:#a78bfa">–</div>
+              <div class="metric-label">Confidence</div>
+            </div>
+          </div>
         </div>
 
         <div class="panel-section">
-          <div class="panel-label">Arm / Hand Occlusion</div>
-          <div id="occlusion-state">Waiting for camera…</div>
+          <div class="panel-label">Tracking &amp; Occlusion State</div>
+          <div id="pose-state">–</div>
+          <div id="occlusion-state" style="margin-top:4px">Waiting for camera…</div>
         </div>
 
         <div class="panel-section">
@@ -222,16 +287,28 @@
           </div>
           <div class="toggles-group" style="margin-top:6px">
             <div class="toggle-row">
-              <input type="checkbox" id="toggle-mask" checked />
-              <label for="toggle-mask">Person segmentation mask</label>
+              <input type="checkbox" id="toggle-3d" checked />
+              <label for="toggle-3d" style="color:#d8b4fe;font-weight:700">3D Real Garment Fitting (Three.js)</label>
             </div>
             <div class="toggle-row">
-              <input type="checkbox" id="toggle-occlusion" checked />
-              <label for="toggle-occlusion">Arm &amp; torso occlusion regions</label>
+              <input type="checkbox" id="toggle-fitted" />
+              <label for="toggle-fitted" style="color:#93c5fd;font-weight:600">2D fitted garment overlay</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="toggle-garment" checked />
+              <label for="toggle-garment">Garment PIP &amp; anchor preview</label>
             </div>
             <div class="toggle-row">
               <input type="checkbox" id="toggle-skeleton" checked />
               <label for="toggle-skeleton">Pose skeleton</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="toggle-occlusion" />
+              <label for="toggle-occlusion">Arm &amp; torso occlusion regions</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="toggle-mask" />
+              <label for="toggle-mask">Person segmentation mask</label>
             </div>
           </div>
         </div>
@@ -244,14 +321,12 @@
         </div>
 
         <div class="panel-section">
-          <div class="panel-label" style="color:#444">Phase 2 Test Scenarios</div>
+          <div class="panel-label" style="color:#444">Phase 4 Verification Scenarios</div>
           <div style="font-size:0.65rem;color:#555;line-height:1.7">
-            1. Arms down at sides → Occlusion is "Clear"<br>
-            2. Cross left arm over chest → "L-ARM OCCLUDING"<br>
-            3. Cross right arm over chest → "R-ARM OCCLUDING"<br>
-            4. Fold both arms → Both arms occluding<br>
-            5. Hand placed on stomach/torso → "Hand On Torso" detected<br>
-            6. Raise arms above shoulders → Follows cleanly
+            1. Move left/right → Garment follows body in real-time<br>
+            2. Step forward/backward → Garment scales automatically<br>
+            3. Lean torso left/right → Garment rotates with shoulder line<br>
+            4. Click different garment buttons → Swaps instantly without restarting camera
           </div>
         </div>
 
@@ -259,7 +334,7 @@
     </main>
 
     <footer>
-      <span>VTrialom Try-On Engine — Phase 2: Segmentation &amp; Occlusion</span>
+      <span>VTrialom Try-On Engine — Phase 4: Real-time Garment Fitting</span>
       <span>localhost:5173</span>
     </footer>
 

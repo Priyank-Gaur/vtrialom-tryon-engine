@@ -1,0 +1,28 @@
+{
+  "id": "classic-white-tee",
+  "name": "Classic White Crewneck Tee",
+  "category": "TSHIRT",
+  "description": "Premium 100% organic cotton crewneck T-shirt in crisp white.",
+  "assetUrl": "/garments/classic-white-tee.svg",
+  "naturalWidth": 600,
+  "naturalHeight": 600,
+  "shoulderToWidthRatio": 0.45,
+  "availableSizes": ["S", "M", "L", "XL"],
+  "defaultSize": "M",
+  "anchors": {
+    "leftShoulder": { "x": 0.275, "y": 0.175 },
+    "rightShoulder": { "x": 0.725, "y": 0.175 },
+    "neckCentre": { "x": 0.50, "y": 0.192 },
+    "hemCentre": { "x": 0.50, "y": 0.900 },
+    "leftHem": { "x": 0.267, "y": 0.900 },
+    "rightHem": { "x": 0.733, "y": 0.900 },
+    "leftSleeveTip": { "x": 0.108, "y": 0.350 },
+    "rightSleeveTip": { "x": 0.892, "y": 0.350 },
+    "chestCentre": { "x": 0.50, "y": 0.433 }
+  },
+  "model3D": {
+    "scale": 1.0,
+    "positionOffset": [0, 0, 0]
+  }
+}
+

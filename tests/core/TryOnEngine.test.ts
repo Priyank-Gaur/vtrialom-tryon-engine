@@ -60,6 +60,23 @@ vi.mock("../../src/segmentation/PersonSegmenter", () => {
   };
 });
 
+// Stub GarmentLoader so no DOM image loading is required in headless state machine tests
+vi.mock("../../src/garments/GarmentLoader", () => {
+  return {
+    GarmentLoader: vi.fn().mockImplementation(() => ({
+      loadGarment: vi.fn().mockImplementation(async (options) => ({
+        metadata: { id: options.id, name: options.id, assetUrl: options.assetUrl ?? "/mock.svg" },
+        image: document.createElement("img"),
+        dimensions: { width: 600, height: 600, aspectRatio: 1.0 },
+        shoulderSpan: 0.45,
+        torsoLength: 0.75,
+      })),
+      clearCache: vi.fn(),
+      getCached: vi.fn().mockReturnValue(null),
+    })),
+  };
+});
+
 // requestAnimationFrame is not available in jsdom — provide a stub
 globalThis.requestAnimationFrame = vi.fn(() => {
   // Don't actually call cb to avoid an infinite loop in tests
@@ -144,6 +161,41 @@ describe("TryOnEngine — state machine", () => {
       "ready",
       "disposed",
     ]);
+  });
+
+  it("loads garment and sets activeGarment", async () => {
+    const engine = new TryOnEngine({ container });
+    await engine.initialize();
+
+    const loaded = await engine.loadGarment({
+      id: "white-tee",
+      assetUrl: "/garments/classic-white-tee.svg",
+    });
+
+    expect(loaded.metadata.id).toBe("white-tee");
+    expect(engine.activeGarment).toBe(loaded);
+  });
+
+  it("switches garments dynamically while running without state disruption", async () => {
+    const engine = new TryOnEngine({ container });
+    await engine.initialize();
+    await engine.startCamera();
+
+    expect(engine.state).toBe("running");
+
+    await engine.loadGarment({ id: "shirt-1", assetUrl: "/s1.svg" });
+    expect(engine.activeGarment?.metadata.id).toBe("shirt-1");
+
+    await engine.loadGarment({ id: "shirt-2", assetUrl: "/s2.svg" });
+    expect(engine.activeGarment?.metadata.id).toBe("shirt-2");
+    expect(engine.state).toBe("running");
+  });
+
+  it("throws when loadGarment is called in uninitialised state", async () => {
+    const engine = new TryOnEngine({ container });
+    await expect(
+      engine.loadGarment({ id: "fail", assetUrl: "/fail.svg" })
+    ).rejects.toThrow(/requires state to be/i);
   });
 });
 

@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+  <defs>
+    <!-- Fabric gradient -->
+    <linearGradient id="teeWhiteGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="70%" stop-color="#f3f4f6"/>
+      <stop offset="100%" stop-color="#e5e7eb"/>
+    </linearGradient>
+    <!-- Soft shadow -->
+    <linearGradient id="foldShadow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgba(0,0,0,0.06)"/>
+      <stop offset="50%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.06)"/>
+    </linearGradient>
+    <filter id="fabricDropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#fabricDropShadow)">
+    <!-- Main T-Shirt Body & Sleeves Outer Path -->
+    <path d="
+      M 240 95
+      C 265 130, 335 130, 360 95
+      L 435 105
+      L 535 210
+      L 485 260
+      L 435 220
+      L 440 540
+      L 160 540
+      L 165 220
+      L 115 260
+      L 65 210
+      L 165 105
+      Z
+    " fill="url(#teeWhiteGrad)" stroke="#d1d5db" stroke-width="2" stroke-linejoin="round"/>
+
+    <!-- Subtle side seam shading -->
+    <path d="
+      M 165 220
+      L 160 540
+      L 440 540
+      L 435 220
+      Z
+    " fill="url(#foldShadow)"/>
+
+    <!-- Collar Band Ribbing -->
+    <path d="
+      M 236 94
+      C 260 136, 340 136, 364 94
+      C 355 86, 245 86, 236 94
+      Z
+    " fill="#f9fafb" stroke="#9ca3af" stroke-width="1.5"/>
+
+    <!-- Collar Inner Shadow Cutout (showing skin/neck behind) -->
+    <path d="
+      M 242 94
+      C 264 128, 336 128, 358 94
+      C 344 88, 256 88, 242 94
+      Z
+    " fill="#e5e7eb" stroke="#9ca3af" stroke-width="1" opacity="0.6"/>
+
+    <!-- Sleeve Hem Seams -->
+    <path d="M 78 222 L 126 270" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <path d="M 522 222 L 474 270" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+    <!-- Bottom Hem Seam -->
+    <path d="M 163 524 L 437 524" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5,4"/>
+
+    <!-- VTrialom subtle chest embroidery brandmark -->
+    <circle cx="230" cy="230" r="12" fill="none" stroke="#2563eb" stroke-width="2"/>
+    <path d="M 224 230 L 230 224 L 236 230 L 230 236 Z" fill="#2563eb"/>
+  </g>
+</svg>
+

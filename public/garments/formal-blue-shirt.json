@@ -1,0 +1,28 @@
+{
+  "id": "formal-blue-shirt",
+  "name": "Oxford French Blue Dress Shirt",
+  "category": "SHIRT",
+  "description": "Tailored Oxford dress shirt with button-down collar and curved hem.",
+  "assetUrl": "/garments/formal-blue-shirt.svg",
+  "naturalWidth": 600,
+  "naturalHeight": 600,
+  "shoulderToWidthRatio": 0.48,
+  "availableSizes": ["38", "40", "42", "44"],
+  "defaultSize": "40",
+  "anchors": {
+    "leftShoulder": { "x": 0.258, "y": 0.158 },
+    "rightShoulder": { "x": 0.742, "y": 0.158 },
+    "neckCentre": { "x": 0.50, "y": 0.183 },
+    "hemCentre": { "x": 0.50, "y": 0.933 },
+    "leftHem": { "x": 0.275, "y": 0.850 },
+    "rightHem": { "x": 0.725, "y": 0.850 },
+    "leftSleeveTip": { "x": 0.100, "y": 0.367 },
+    "rightSleeveTip": { "x": 0.900, "y": 0.367 },
+    "chestCentre": { "x": 0.50, "y": 0.420 }
+  },
+  "model3D": {
+    "scale": 1.0,
+    "positionOffset": [0, 0, 0]
+  }
+}
+

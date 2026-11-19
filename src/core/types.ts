@@ -135,46 +135,106 @@ export interface SegmentationResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Garment category.  Drives which fitting algorithm is selected.
- * Extensible — add "TROUSERS", "DRESS", etc. as new phases are reached.
+ * Garment category. Drives which fitting and deformation algorithms are selected.
+ * Extensible for future bottomwear and full-body clothing.
  */
-export type GarmentCategory = "TOP" | "OUTERWEAR" | "PLACEHOLDER";
+export type GarmentCategory =
+  | "TOP"
+  | "TSHIRT"
+  | "SHIRT"
+  | "HOODIE"
+  | "OUTERWEAR"
+  | "PLACEHOLDER";
 
 /**
  * Anchor points that locate the garment on the body.
- * All values are in normalised [0,1] garment-image space.
- *
- * Example for a T-shirt:
- *   leftShoulder  → where the left shoulder seam begins
- *   rightShoulder → where the right shoulder seam begins
- *   neckCentre    → collar centre
- *   hemCentre     → bottom hem centre
+ * All coordinates are normalised [0,1] in garment-image space.
  */
 export interface GarmentAnchors {
   leftShoulder: NormalisedPoint2D;
   rightShoulder: NormalisedPoint2D;
   neckCentre: NormalisedPoint2D;
   hemCentre: NormalisedPoint2D;
+  leftHem?: NormalisedPoint2D;
+  rightHem?: NormalisedPoint2D;
   leftSleeveTip?: NormalisedPoint2D;
   rightSleeveTip?: NormalisedPoint2D;
+  chestCentre?: NormalisedPoint2D;
 }
 
-/** All metadata for one garment asset. */
+/** 3D model metadata for future 3D rendering pipeline. */
+export interface Garment3DAnchors {
+  neckline?: [number, number, number];
+  leftShoulder?: [number, number, number];
+  rightShoulder?: [number, number, number];
+  chest?: [number, number, number];
+  waist?: [number, number, number];
+  hem?: [number, number, number];
+  leftElbow?: [number, number, number];
+  rightElbow?: [number, number, number];
+  leftWrist?: [number, number, number];
+  rightWrist?: [number, number, number];
+}
+
+export interface Garment3DMetadata {
+  id: string;
+  name: string;
+  category: string;
+  modelUrl: string;
+  format?: "GLB" | "GLTF";
+  anchors: Garment3DAnchors;
+  scale?: [number, number, number] | number;
+  rotationOffset?: [number, number, number];
+  positionOffset?: [number, number, number];
+  source?: {
+    repository?: string;
+    url?: string;
+    license?: string;
+    commercialUsePermitted?: boolean;
+    author?: string;
+  };
+  fitting?: {
+    proportions?: "regular" | "oversized" | "slim" | "fitted";
+    shoulderStiffness?: number;
+    sleeveFollowTorso?: number;
+  };
+}
+
+/** Complete metadata specification for a garment asset. */
 export interface GarmentMetadata {
   id: string;
   name: string;
   category: GarmentCategory;
-  /** URL or path to the transparent PNG/WebP image. */
+  /** URL or path to the transparent PNG/WebP image asset. */
   assetUrl: string;
   anchors: GarmentAnchors;
   /** Natural pixel dimensions of the source image. */
   naturalWidth: number;
   naturalHeight: number;
   /**
-   * Aspect ratio of the garment's shoulder span relative to its full width.
+   * Ratio of the garment's shoulder span relative to its full width [0.0, 1.0].
    * Used for proportion-aware scaling.
    */
   shoulderToWidthRatio: number;
+  description?: string;
+  availableSizes?: string[];
+  defaultSize?: string;
+  model3D?: Garment3DMetadata;
+}
+
+/** A fully loaded and parsed garment asset ready for rendering and fitting. */
+export interface LoadedGarment {
+  metadata: GarmentMetadata;
+  image: HTMLImageElement;
+  dimensions: {
+    width: number;
+    height: number;
+    aspectRatio: number;
+  };
+  /** Distance between left and right shoulder in normalized asset units [0,1]. */
+  shoulderSpan: number;
+  /** Length from neckline to bottom hem in normalized asset units [0,1]. */
+  torsoLength: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +254,18 @@ export interface GarmentTransform {
   /** Origin of rotation in pixel coords (absolute on canvas). */
   originX: number;
   originY: number;
+}
+
+/** Per-frame result produced by GarmentFitter. */
+export interface FittingResult {
+  /** The garment ID this result applies to. */
+  garmentId: string;
+  /** Canvas-space transform describing where and how to draw the garment. */
+  transform: GarmentTransform;
+  /** Whether the body was sufficiently visible for a confident fit. */
+  confident: boolean;
+  /** Scale factor applied (body shoulder px / garment shoulder span). */
+  scale: number;
 }
 
 // ---------------------------------------------------------------------------

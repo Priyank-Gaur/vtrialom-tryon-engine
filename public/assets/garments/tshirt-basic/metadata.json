@@ -1,0 +1,36 @@
+{
+  "id": "tshirt-basic",
+  "name": "Classic Crewneck T-Shirt",
+  "category": "Basic short-sleeve T-shirt",
+  "modelUrl": "/assets/garments/tshirt-basic/model.glb",
+  "format": "GLB",
+  "dimensions": {
+    "width": 0.55,
+    "height": 0.613,
+    "depth": 0.269
+  },
+  "anchors": {
+    "neckline": [0.0, 0.24, 0.0],
+    "leftShoulder": [-0.20, 0.22, 0.0],
+    "rightShoulder": [0.20, 0.22, 0.0],
+    "chest": [0.0, 0.05, 0.05],
+    "waist": [0.0, -0.18, 0.0],
+    "hem": [0.0, -0.35, 0.0],
+    "leftSleeveTip": [-0.27, 0.08, 0.0],
+    "rightSleeveTip": [0.27, 0.08, 0.0]
+  },
+  "positionOffset": [0.0, -0.08, 0.0],
+  "scale": 1.0,
+  "source": {
+    "repository": "project_threejs_ai",
+    "url": "https://github.com/adrianhajdin/project_threejs_ai",
+    "license": "MIT",
+    "commercialUsePermitted": true,
+    "author": "adrianhajdin"
+  },
+  "fitting": {
+    "proportions": "regular",
+    "shoulderStiffness": 0.6,
+    "sleeveFollowTorso": 0.8
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "garments": [
+    {
+      "id": "tshirt-basic",
+      "name": "Classic Crewneck T-Shirt",
+      "category": "Basic short-sleeve T-shirt",
+      "modelUrl": "/assets/garments/tshirt-basic/model.glb",
+      "metadataUrl": "/assets/garments/tshirt-basic/metadata.json",
+      "status": "ready",
+      "license": "MIT"
+    }
+  ]
+}

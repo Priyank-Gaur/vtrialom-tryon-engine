@@ -1,0 +1,28 @@
+{
+  "id": "vintage-black-tee",
+  "name": "Vintage Cyber Graphic Tee",
+  "category": "TSHIRT",
+  "description": "Heavyweight washed-black streetwear tee featuring front cyber graphics.",
+  "assetUrl": "/garments/vintage-black-tee.svg",
+  "naturalWidth": 600,
+  "naturalHeight": 600,
+  "shoulderToWidthRatio": 0.45,
+  "availableSizes": ["M", "L", "XL", "XXL"],
+  "defaultSize": "L",
+  "anchors": {
+    "leftShoulder": { "x": 0.275, "y": 0.176 },
+    "rightShoulder": { "x": 0.725, "y": 0.176 },
+    "neckCentre": { "x": 0.50, "y": 0.194 },
+    "hemCentre": { "x": 0.50, "y": 0.900 },
+    "leftHem": { "x": 0.267, "y": 0.900 },
+    "rightHem": { "x": 0.733, "y": 0.900 },
+    "leftSleeveTip": { "x": 0.103, "y": 0.353 },
+    "rightSleeveTip": { "x": 0.897, "y": 0.353 },
+    "chestCentre": { "x": 0.50, "y": 0.440 }
+  },
+  "model3D": {
+    "scale": 1.05,
+    "positionOffset": [0, 0, 0]
+  }
+}
+

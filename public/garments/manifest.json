@@ -1,0 +1,24 @@
+[
+  {
+    "id": "classic-white-tee",
+    "name": "Classic White Crewneck Tee",
+    "category": "TSHIRT",
+    "assetUrl": "/garments/classic-white-tee.svg",
+    "metadataUrl": "/garments/classic-white-tee.json"
+  },
+  {
+    "id": "vintage-black-tee",
+    "name": "Vintage Cyber Graphic Tee",
+    "category": "TSHIRT",
+    "assetUrl": "/garments/vintage-black-tee.svg",
+    "metadataUrl": "/garments/vintage-black-tee.json"
+  },
+  {
+    "id": "formal-blue-shirt",
+    "name": "Oxford French Blue Dress Shirt",
+    "category": "SHIRT",
+    "assetUrl": "/garments/formal-blue-shirt.svg",
+    "metadataUrl": "/garments/formal-blue-shirt.json"
+  }
+]
+

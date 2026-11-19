@@ -15,7 +15,7 @@
 
 import { TryOnEngine, LoadGarmentOptions } from "../core/TryOnEngine.js";
 import { EngineConfig } from "../core/EngineConfig.js";
-import type { EngineState, EngineErrorEvent, SegmentationResult } from "../core/types.js";
+import type { EngineState, EngineErrorEvent, SegmentationResult, LoadedGarment, FittingResult } from "../core/types.js";
 import type { TrackingResult } from "../tracking/PoseTracker.js";
 
 export interface TryOnComponentOptions {
@@ -79,6 +79,22 @@ export class VTrialomTryOn {
       );
     });
 
+    this._engine.addEventListener("garmentloaded", (e) => {
+      options.container.dispatchEvent(
+        new CustomEvent("vtrialom:garmentloaded", {
+          detail: (e as CustomEvent<LoadedGarment>).detail,
+        })
+      );
+    });
+
+    this._engine.addEventListener("fittingresult", (e) => {
+      options.container.dispatchEvent(
+        new CustomEvent("vtrialom:fittingresult", {
+          detail: (e as CustomEvent<FittingResult>).detail,
+        })
+      );
+    });
+
     this._engine.addEventListener("framerendered", (e) => {
       options.container.dispatchEvent(
         new CustomEvent("vtrialom:framerendered", { detail: (e as CustomEvent).detail })
@@ -108,8 +124,12 @@ export class VTrialomTryOn {
     await this._engine.stopCamera();
   }
 
-  async loadGarment(options: LoadGarmentOptions): Promise<void> {
-    await this._engine.loadGarment(options);
+  async loadGarment(options: LoadGarmentOptions): Promise<LoadedGarment> {
+    return this._engine.loadGarment(options);
+  }
+
+  setOutputDimensions(width: number, height: number): void {
+    this._engine.setOutputDimensions(width, height);
   }
 
   dispose(): void {
@@ -125,6 +145,10 @@ export class VTrialomTryOn {
 
   get state(): EngineState {
     return this._engine.state;
+  }
+
+  get activeGarment(): LoadedGarment | null {
+    return this._engine.activeGarment;
   }
 
   get canvas(): HTMLCanvasElement {
@@ -147,6 +171,10 @@ export class VTrialomTryOn {
     return this._engine.latestSegmentationResult;
   }
 
+  get latestFittingResult(): FittingResult | null {
+    return this._engine.latestFittingResult;
+  }
+
   // =========================================================================
   // Private
   // =========================================================================
@@ -157,5 +185,6 @@ export class VTrialomTryOn {
     const dpr = window.devicePixelRatio || 1;
     this._canvas.width = Math.round(rect.width * dpr);
     this._canvas.height = Math.round(rect.height * dpr);
+    this._engine.setOutputDimensions(this._canvas.width, this._canvas.height);
   }
 }
