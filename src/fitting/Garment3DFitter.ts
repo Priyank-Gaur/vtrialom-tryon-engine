@@ -56,8 +56,8 @@ export class Garment3DFitter {
 
     const posX = (midXNorm - 0.5) * frustumWidth;
     const posY = -(midYNorm - 0.5) * frustumHeight;
-    // Z estimated from shoulder width scaling / depth
-    const posZ = (ls?.z && rs?.z) ? -((ls.z + rs.z) / 2.0) * 0.8 : 0.0;
+    // Slight forward offset (+Z towards camera) so garment sits on the chest
+    const posZ = 0.05 + ((ls?.z && rs?.z) ? -((ls.z + rs.z) / 2.0) * 0.5 : 0.0);
 
     this._tmpPos.set(posX, posY, posZ);
 
@@ -69,46 +69,42 @@ export class Garment3DFitter {
     }
 
     // 2. Calculate 3D Rotation (Yaw, Pitch, Roll)
-    // Roll: In-plane shoulder tilt (mirrored)
+    // Roll: In-plane shoulder tilt (mirrored for selfie)
     const roll = -body.torsoRotation;
 
-    // Pitch: Torso forward/backward lean (shoulder Z vs hip Z)
+    // Pitch: Torso forward/backward lean
     let pitch = 0;
     if (ls && rs && lh && rh && ls.z !== undefined && lh.z !== undefined) {
       const shoulderZ = (ls.z + rs.z) / 2;
       const hipZ = (lh.z + rh.z) / 2;
       const deltaY = Math.max(body.torsoHeight, 0.1);
-      pitch = Math.atan2(shoulderZ - hipZ, deltaY) * 0.6;
+      pitch = Math.atan2(shoulderZ - hipZ, deltaY) * 0.45;
     }
 
-    // Yaw: Turning left or right (left shoulder Z vs right shoulder Z)
+    // Yaw: Turning left or right
     let yaw = 0;
     if (ls && rs && ls.z !== undefined && rs.z !== undefined) {
-      // In selfie mirror: anatomical left is screen left
       const deltaZ = rs.z - ls.z;
       const deltaX = Math.max(body.shoulderWidth, 0.1);
-      yaw = Math.atan2(deltaZ, deltaX) * 0.8;
+      yaw = Math.atan2(deltaZ, deltaX) * 0.65;
     }
 
     this._tmpEuler.set(pitch, yaw, roll);
 
-    // 3. Calculate 3D Scale
-    // Target 3D shoulder span in Three.js world units
+    // 3. Calculate 3D Scale (uniform proportional scaling to shoulder span)
     const targetShoulderWidth = body.shoulderWidth * frustumWidth;
     const baseSpan = Math.max(garment.shoulderSpan, 0.1);
-
     const uniformScale = targetShoulderWidth / baseSpan;
 
-    // Proportion scaling
-    const scaleX = uniformScale;
-    const scaleY = (body.torsoHeight * frustumHeight) / Math.max(garment.dimensions.y * 0.7, 0.2);
-    const scaleZ = (scaleX + scaleY) / 2.0;
+    // Torso length modulation
+    const torsoScaleRatio = (body.torsoHeight * frustumHeight) / Math.max(garment.dimensions.y * uniformScale, 0.2);
+    const lengthModulation = Math.min(Math.max(torsoScaleRatio, 0.9), 1.15);
 
-    this._tmpScale.set(
-      scaleX * 0.95,
-      Math.min(scaleY, scaleX * 1.3),
-      scaleZ * 0.95,
-    );
+    const scaleX = uniformScale;
+    const scaleY = uniformScale * lengthModulation;
+    const scaleZ = uniformScale;
+
+    this._tmpScale.set(scaleX, scaleY, scaleZ);
 
     // Apply metadata scale factor if configured
     if (typeof garment.metadata.scale === "number") {

@@ -1,0 +1,31 @@
+{
+  "id": "sweatshirt",
+  "name": "Streetwear Hoodie & Sweatshirt",
+  "category": "Sweatshirt / Hoodie",
+  "modelUrl": "/assets/garments/sweatshirt/model.glb",
+  "format": "GLB",
+  "dimensions": {
+    "width": 0.58,
+    "height": 0.68,
+    "depth": 0.28
+  },
+  "anchors": {
+    "neckline": [0.0, 0.25, 0.0],
+    "leftShoulder": [-0.22, 0.20, 0.0],
+    "rightShoulder": [0.22, 0.20, 0.0],
+    "chest": [0.0, 0.05, 0.06],
+    "hem": [0.0, -0.38, 0.0]
+  },
+  "scale": 1.05,
+  "source": {
+    "repository": "proplus-3d-hoodie",
+    "url": "https://github.com/utku6161-tr/proplus-3d-hoodie",
+    "license": "MIT",
+    "commercialUsePermitted": true
+  },
+  "fitting": {
+    "proportions": "oversized",
+    "shoulderStiffness": 0.7,
+    "sleeveFollowTorso": 0.85
+  }
+}

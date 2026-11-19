@@ -19,7 +19,7 @@
 import { VTrialomTryOn } from "./api/TryOnComponent.js";
 import { LANDMARK_INDEX } from "./core/types.js";
 import type { TrackingResult } from "./tracking/PoseTracker.js";
-import type { SegmentationResult, NormalisedPolygon, LoadedGarment, FittingResult } from "./core/types.js";
+import type { SegmentationResult, NormalisedPolygon } from "./core/types.js";
 import { ThreeRenderer } from "./rendering/ThreeRenderer.js";
 import { Garment3DLoader, type Loaded3DGarment } from "./garments/Garment3DLoader.js";
 import { Garment3DFitter } from "./fitting/Garment3DFitter.js";
@@ -49,15 +49,13 @@ const KEY_LANDMARKS = new Set<number>([
   LANDMARK_INDEX.RIGHT_HIP,
 ]);
 
-// Garment catalog available for testing
+// 3D Garment catalog
 interface GarmentItem {
   id: string;
   name: string;
   category: string;
-  is3D?: boolean;
   metadataUrl: string;
-  assetUrl?: string;
-  modelUrl?: string;
+  modelUrl: string;
 }
 
 const CATALOG: GarmentItem[] = [
@@ -65,31 +63,29 @@ const CATALOG: GarmentItem[] = [
     id: "tshirt-basic",
     name: "3D Classic Crewneck Tee (GLB)",
     category: "Basic short-sleeve T-shirt",
-    is3D: true,
     metadataUrl: "/assets/garments/tshirt-basic/metadata.json",
     modelUrl: "/assets/garments/tshirt-basic/model.glb",
-    assetUrl: "/garments/classic-white-tee.svg",
   },
   {
-    id: "classic-white-tee",
-    name: "2D Classic White Tee (SVG)",
-    category: "TSHIRT",
-    metadataUrl: "/garments/classic-white-tee.json",
-    assetUrl: "/garments/classic-white-tee.svg",
+    id: "casual-shirt",
+    name: "3D Oxford Button-Down Shirt (GLB)",
+    category: "Casual button-down shirt",
+    metadataUrl: "/assets/garments/casual-shirt/metadata.json",
+    modelUrl: "/assets/garments/casual-shirt/model.glb",
   },
   {
-    id: "vintage-black-tee",
-    name: "2D Vintage Cyber Tee (SVG)",
-    category: "TSHIRT",
-    metadataUrl: "/garments/vintage-black-tee.json",
-    assetUrl: "/garments/vintage-black-tee.svg",
+    id: "sweatshirt",
+    name: "3D Streetwear Hoodie (GLB)",
+    category: "Sweatshirt / Hoodie",
+    metadataUrl: "/assets/garments/sweatshirt/metadata.json",
+    modelUrl: "/assets/garments/sweatshirt/model.glb",
   },
   {
-    id: "formal-blue-shirt",
-    name: "2D Oxford Blue Shirt (SVG)",
-    category: "SHIRT",
-    metadataUrl: "/garments/formal-blue-shirt.json",
-    assetUrl: "/garments/formal-blue-shirt.svg",
+    id: "lightweight-jacket",
+    name: "3D Lightweight Sport Jacket (GLB)",
+    category: "Lightweight jacket",
+    metadataUrl: "/assets/garments/lightweight-jacket/metadata.json",
+    modelUrl: "/assets/garments/lightweight-jacket/model.glb",
   },
 ];
 
@@ -114,8 +110,6 @@ async function main() {
   const skeletonToggle = document.getElementById("toggle-skeleton") as HTMLInputElement;
   const maskToggle = document.getElementById("toggle-mask") as HTMLInputElement;
   const occlusionToggle = document.getElementById("toggle-occlusion") as HTMLInputElement;
-  const garmentToggle = document.getElementById("toggle-garment") as HTMLInputElement;
-  const fittedToggle = document.getElementById("toggle-fitted") as HTMLInputElement;
   const toggle3D = document.getElementById("toggle-3d") as HTMLInputElement;
   const placeholder = document.getElementById("camera-placeholder")!;
 
@@ -146,8 +140,6 @@ async function main() {
 
   let latestTracking: TrackingResult | null = null;
   let latestSegmentation: SegmentationResult | null = null;
-  let latestFitting: FittingResult | null = null;
-  let activeGarment: LoadedGarment | null = null;
 
   // ---- State change handlers ----
   container.addEventListener("vtrialom:statechange", (e) => {
@@ -171,15 +163,6 @@ async function main() {
     latestSegmentation = (e as CustomEvent<SegmentationResult>).detail;
   });
 
-  container.addEventListener("vtrialom:fittingresult", (e) => {
-    latestFitting = (e as CustomEvent<FittingResult>).detail;
-  });
-
-  container.addEventListener("vtrialom:garmentloaded", (e) => {
-    activeGarment = (e as CustomEvent<LoadedGarment>).detail;
-    updateGarmentUI(activeGarment, garmentInfoEl);
-  });
-
   // ---- Garment Selector Buttons ----
   CATALOG.forEach((item, index) => {
     const btn = document.createElement("button");
@@ -192,38 +175,21 @@ async function main() {
       btn.classList.add("active");
 
       try {
-        if (item.is3D) {
-          statusEl.textContent = `Loading 3D asset: ${item.name}…`;
-          const loaded3D = await loader3D.loadGarment({
-            id: item.id,
-            metadataUrl: item.metadataUrl,
-            modelUrl: item.modelUrl,
-          });
-          active3DGarment = loaded3D;
-          threeRenderer.setGarmentMesh(loaded3D.model);
-          update3DGarmentUI(loaded3D, garmentInfoEl);
-          statusEl.textContent = `Loaded 3D model ${loaded3D.metadata.name}`;
-        } else {
-          threeRenderer.setGarmentMesh(null);
-          active3DGarment = null;
+        statusEl.textContent = `Loading 3D asset: ${item.name}…`;
+        // Detach previous mesh immediately
+        threeRenderer.setGarmentMesh(null);
 
-          if (engine.state === "uninitialised") {
-            statusEl.textContent = "Initializing engine to load garment…";
-            await engine.initialize();
-          }
-
-          statusEl.textContent = `Loading garment: ${item.name}…`;
-          const loaded = await engine.loadGarment({
-            id: item.id,
-            name: item.name,
-            metadataUrl: item.metadataUrl,
-            assetUrl: item.assetUrl,
-          });
-          activeGarment = loaded;
-          statusEl.textContent = `Loaded ${loaded.metadata.name}`;
-        }
+        const loaded3D = await loader3D.loadGarment({
+          id: item.id,
+          metadataUrl: item.metadataUrl,
+          modelUrl: item.modelUrl,
+        });
+        active3DGarment = loaded3D;
+        threeRenderer.setGarmentMesh(loaded3D.model);
+        update3DGarmentUI(loaded3D, garmentInfoEl);
+        statusEl.textContent = `Wearing: ${loaded3D.metadata.name}`;
       } catch (err) {
-        console.error("Failed to load garment:", err);
+        console.error("Failed to load 3D garment:", err);
         statusEl.textContent = `Garment load failed: ${(err as Error).message}`;
         statusEl.style.color = "#ff4444";
       }
@@ -259,12 +225,7 @@ async function main() {
         }
         ctx.restore();
 
-        // 3. Draw Fitted 2D Garment Overlay (if active)
-        if (fittedToggle.checked && activeGarment && latestFitting) {
-          drawFittedGarment(ctx, activeGarment, latestFitting, w, h);
-        }
-
-        // 3D Real Garment Fitting & Three.js WebGL rendering
+        // 2. 3D Real Garment Fitting & Three.js WebGL rendering
         threeRenderer.setSize(w, h);
         if (toggle3D.checked && active3DGarment && latestTracking?.bodyGeometry) {
           const fit3D = fitter3D.fit(latestTracking.bodyGeometry, active3DGarment, threeRenderer.camera);
@@ -274,25 +235,20 @@ async function main() {
           fittingScaleEl.textContent = `${(fit3D.scale.x * 100).toFixed(0)}%`;
           const deg = Math.round((fit3D.rotation.z * 180) / Math.PI);
           fittingRotEl.textContent = `${deg}°`;
-          fittingConfEl.textContent = fit3D.confident ? "3D High" : "3D Low";
+          fittingConfEl.textContent = fit3D.confident ? "3D Fitted" : "Searching";
           fittingConfEl.style.color = fit3D.confident ? "#d8b4fe" : "#f59e0b";
-        } else if (active3DGarment) {
-          threeRenderer.render();
+        } else {
+          threeRenderer.clear();
         }
 
-        // 4. Draw Occlusion polygons & analysis
+        // 3. Draw Occlusion polygons & analysis
         if (occlusionToggle.checked && latestSegmentation?.occlusion) {
           drawOcclusionRegions(ctx, latestSegmentation.occlusion, w, h);
         }
 
-        // 5. Draw Skeleton overlay
+        // 4. Draw Skeleton overlay
         if (skeletonToggle.checked && latestTracking?.poseDetected) {
           drawSkeleton(ctx, latestTracking, w, h);
-        }
-
-        // 6. Draw Garment Asset Preview & Anchors PIP overlay
-        if (garmentToggle.checked && activeGarment) {
-          drawGarmentPreview(ctx, activeGarment, w, h);
         }
 
         // 7. Update Diagnostics & Fitting UI
@@ -303,24 +259,6 @@ async function main() {
 
         poseStateEl.textContent = diag.poseDetected ? "✓ Pose active" : "✗ No pose";
         poseStateEl.style.color = diag.poseDetected ? "#6ed86e" : "#ff8844";
-
-        if (latestFitting && latestFitting.confident) {
-          fittingScaleEl.textContent = `${(latestFitting.scale * 100).toFixed(0)}%`;
-          const deg = Math.round((latestFitting.transform.rotation * 180) / Math.PI);
-          fittingRotEl.textContent = `${deg}°`;
-          fittingConfEl.textContent = "High";
-          fittingConfEl.style.color = "#6ed86e";
-        } else if (latestFitting) {
-          fittingScaleEl.textContent = `${(latestFitting.scale * 100).toFixed(0)}%`;
-          fittingRotEl.textContent = "–";
-          fittingConfEl.textContent = "Low";
-          fittingConfEl.style.color = "#f59e0b";
-        } else {
-          fittingScaleEl.textContent = "–";
-          fittingRotEl.textContent = "–";
-          fittingConfEl.textContent = "No Fit";
-          fittingConfEl.style.color = "#888";
-        }
 
         updateOcclusionUI(latestSegmentation, occlusionStateEl);
         updateLandmarkList(latestTracking);
@@ -339,15 +277,17 @@ async function main() {
     }
     const ctx = engine.canvas.getContext("2d");
     ctx?.clearRect(0, 0, engine.canvas.width, engine.canvas.height);
+
+    // Completely clear and hide 3D canvas on camera stop
+    threeRenderer.setGarmentMesh(null);
+    threeRenderer.clear();
+
     fpsEl.textContent = "– FPS";
     trackingLatencyEl.textContent = "– ms";
     segLatencyEl.textContent = "– ms";
     fittingScaleEl.textContent = "–";
     fittingRotEl.textContent = "–";
     fittingConfEl.textContent = "–";
-    poseStateEl.textContent = "–";
-    occlusionStateEl.textContent = "–";
-    segLatencyEl.textContent = "– ms";
     poseStateEl.textContent = "–";
     occlusionStateEl.textContent = "–";
   }
@@ -360,34 +300,26 @@ async function main() {
         await engine.initialize();
       }
 
-      // Preload initial 3D or 2D garment if not yet loaded
-      if (!active3DGarment && !activeGarment) {
+      // Preload initial 3D garment
+      if (!active3DGarment) {
         const defaultItem = CATALOG[0];
-        if (defaultItem.is3D) {
-          statusEl.textContent = `Loading 3D asset: ${defaultItem.name}…`;
-          active3DGarment = await loader3D.loadGarment({
-            id: defaultItem.id,
-            metadataUrl: defaultItem.metadataUrl,
-            modelUrl: defaultItem.modelUrl,
-          });
-          threeRenderer.setGarmentMesh(active3DGarment.model);
-          update3DGarmentUI(active3DGarment, garmentInfoEl);
-        } else {
-          statusEl.textContent = `Preloading default garment: ${defaultItem.name}…`;
-          activeGarment = await engine.loadGarment({
-            id: defaultItem.id,
-            name: defaultItem.name,
-            metadataUrl: defaultItem.metadataUrl,
-            assetUrl: defaultItem.assetUrl,
-          });
-        }
+        statusEl.textContent = `Loading 3D asset: ${defaultItem.name}…`;
+        active3DGarment = await loader3D.loadGarment({
+          id: defaultItem.id,
+          metadataUrl: defaultItem.metadataUrl,
+          modelUrl: defaultItem.modelUrl,
+        });
+        threeRenderer.setGarmentMesh(active3DGarment.model);
+        update3DGarmentUI(active3DGarment, garmentInfoEl);
+      } else {
+        threeRenderer.setGarmentMesh(active3DGarment.model);
       }
 
       statusEl.textContent = "Starting camera…";
       await engine.startCamera();
       placeholder.style.display = "none";
       startDrawLoop();
-      statusEl.textContent = "Running — Pose, Segmentation & Garment Pipeline active";
+      statusEl.textContent = "Running — Real-time 3D Garment Try-On Active";
     } catch (err) {
       console.error("[demo] start failed:", err);
       statusEl.textContent = `Start failed: ${(err as Error).message}`;
@@ -401,6 +333,9 @@ async function main() {
     placeholder.style.display = "";
     latestTracking = null;
     latestSegmentation = null;
+    active3DGarment = null;
+    threeRenderer.setGarmentMesh(null);
+    threeRenderer.clear();
     landmarkListEl.innerHTML = "";
     statusEl.textContent = "Camera stopped";
   });
@@ -417,118 +352,6 @@ async function main() {
 // ---------------------------------------------------------------------------
 // Rendering Functions
 // ---------------------------------------------------------------------------
-
-/**
- * Phase 4 Core: Renders the fitted garment aligned to the user's shoulders,
- * scaled to their body width, and rotated with the torso angle.
- */
-function drawFittedGarment(
-  ctx: CanvasRenderingContext2D,
-  garment: LoadedGarment,
-  fitting: FittingResult,
-  _canvasW: number,
-  _canvasH: number
-): void {
-  if (!fitting.transform) return;
-
-  const t = fitting.transform;
-
-  ctx.save();
-  // Rotate around the shoulder midpoint origin
-  ctx.translate(t.originX, t.originY);
-  ctx.rotate(t.rotation);
-
-  // Confidence alpha modulation
-  ctx.globalAlpha = fitting.confident ? 0.95 : 0.65;
-
-  // Draw the garment image with its shoulder anchor centered at the rotation origin
-  ctx.drawImage(
-    garment.image,
-    t.x,
-    t.y,
-    t.width,
-    t.height
-  );
-
-  ctx.restore();
-}
-
-/**
- * Renders a picture-in-picture card showing the loaded garment asset,
- * its dimensions, and plots all normalized anchor points.
- */
-function drawGarmentPreview(
-  ctx: CanvasRenderingContext2D,
-  garment: LoadedGarment,
-  canvasW: number,
-  _canvasH: number
-): void {
-  const pipWidth = 180;
-  const pipHeight = 180;
-  const padding = 16;
-  const x = canvasW - pipWidth - padding;
-  const y = padding;
-
-  ctx.save();
-
-  // Background card
-  ctx.fillStyle = "rgba(17, 24, 39, 0.88)";
-  ctx.strokeStyle = "rgba(59, 130, 246, 0.5)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.roundRect(x, y, pipWidth, pipHeight, 10);
-  ctx.fill();
-  ctx.stroke();
-
-  // Garment image
-  ctx.drawImage(garment.image, x + 10, y + 10, pipWidth - 20, pipHeight - 20);
-
-  // Overlay Anchor Points
-  const anchors = garment.metadata.anchors;
-  const anchorScaleX = pipWidth - 20;
-  const anchorScaleY = pipHeight - 20;
-  const originX = x + 10;
-  const originY = y + 10;
-
-  const plotAnchor = (pt: { x: number; y: number }, color: string, label: string) => {
-    const px = originX + pt.x * anchorScaleX;
-    const py = originY + pt.y * anchorScaleY;
-
-    ctx.beginPath();
-    ctx.arc(px, py, 4, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.font = "bold 9px monospace";
-    ctx.fillStyle = color;
-    ctx.fillText(label, px + 6, py + 3);
-  };
-
-  // Plot key anchors
-  plotAnchor(anchors.leftShoulder, "#facc15", "LS");
-  plotAnchor(anchors.rightShoulder, "#facc15", "RS");
-  plotAnchor(anchors.neckCentre, "#38bdf8", "N");
-  plotAnchor(anchors.hemCentre, "#4ade80", "H");
-  if (anchors.leftSleeveTip) plotAnchor(anchors.leftSleeveTip, "#c084fc", "SL");
-  if (anchors.rightSleeveTip) plotAnchor(anchors.rightSleeveTip, "#c084fc", "SR");
-  if (anchors.chestCentre) plotAnchor(anchors.chestCentre, "#f472b6", "C");
-
-  // Title badge
-  ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
-  ctx.beginPath();
-  ctx.roundRect(x + 8, y + pipHeight - 24, pipWidth - 16, 18, 4);
-  ctx.fill();
-
-  ctx.font = "600 10px sans-serif";
-  ctx.fillStyle = "#e2e8f0";
-  ctx.textAlign = "center";
-  ctx.fillText(garment.metadata.name.slice(0, 22), x + pipWidth / 2, y + pipHeight - 12);
-
-  ctx.restore();
-}
 
 function drawSegmentationMask(
   ctx: CanvasRenderingContext2D,
@@ -695,23 +518,6 @@ function update3DGarmentUI(garment: Loaded3DGarment | null, el: HTMLElement): vo
     <div class="lm-row"><span class="lm-name">Mesh Size</span><span class="lm-val">${(garment.dimensions.x * 100).toFixed(0)}×${(garment.dimensions.y * 100).toFixed(0)}×${(garment.dimensions.z * 100).toFixed(0)} cm</span></div>
     <div class="lm-row"><span class="lm-name">Span</span><span class="lm-val">${(garment.shoulderSpan * 100).toFixed(1)} cm</span></div>
     <div class="lm-row"><span class="lm-name">Licence</span><span class="lm-val" style="color:#6ed86e">${meta.source?.license || "MIT (Commercial Ready)"}</span></div>
-  `;
-}
-
-function updateGarmentUI(garment: LoadedGarment | null, el: HTMLElement): void {
-  if (!garment) {
-    el.innerHTML = '<span style="color:#555">No garment loaded</span>';
-    return;
-  }
-
-  const meta = garment.metadata;
-  el.innerHTML = `
-    <div class="lm-row"><span class="lm-name">Item</span><span class="lm-val" style="color:#60a5fa;font-weight:600">${meta.name}</span></div>
-    <div class="lm-row"><span class="lm-name">Category</span><span class="lm-val">${meta.category}</span></div>
-    <div class="lm-row"><span class="lm-name">Resolution</span><span class="lm-val">${garment.dimensions.width}×${garment.dimensions.height}</span></div>
-    <div class="lm-row"><span class="lm-name">Shoulder Span</span><span class="lm-val">${(garment.shoulderSpan * 100).toFixed(1)}%</span></div>
-    <div class="lm-row"><span class="lm-name">Torso Length</span><span class="lm-val">${(garment.torsoLength * 100).toFixed(1)}%</span></div>
-    <div class="lm-row"><span class="lm-name">Sizes</span><span class="lm-val">${meta.availableSizes?.join(", ") || "Default"}</span></div>
   `;
 }
 

@@ -1,0 +1,31 @@
+{
+  "id": "casual-shirt",
+  "name": "Classic Oxford Button-Down Shirt",
+  "category": "Casual button-down shirt",
+  "modelUrl": "/assets/garments/casual-shirt/model.glb",
+  "format": "GLB",
+  "dimensions": {
+    "width": 0.56,
+    "height": 0.66,
+    "depth": 0.26
+  },
+  "anchors": {
+    "neckline": [0.0, 0.25, 0.0],
+    "leftShoulder": [-0.21, 0.21, 0.0],
+    "rightShoulder": [0.21, 0.21, 0.0],
+    "chest": [0.0, 0.05, 0.05],
+    "hem": [0.0, -0.36, 0.0]
+  },
+  "scale": 1.0,
+  "source": {
+    "repository": "AvatarParzival/3d",
+    "url": "https://github.com/AvatarParzival/3d",
+    "license": "MIT",
+    "commercialUsePermitted": true
+  },
+  "fitting": {
+    "proportions": "fitted",
+    "shoulderStiffness": 0.6,
+    "sleeveFollowTorso": 0.75
+  }
+}

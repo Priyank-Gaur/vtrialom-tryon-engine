@@ -9,6 +9,33 @@
       "metadataUrl": "/assets/garments/tshirt-basic/metadata.json",
       "status": "ready",
       "license": "MIT"
+    },
+    {
+      "id": "casual-shirt",
+      "name": "Classic Oxford Button-Down Shirt",
+      "category": "Casual button-down shirt",
+      "modelUrl": "/assets/garments/casual-shirt/model.glb",
+      "metadataUrl": "/assets/garments/casual-shirt/metadata.json",
+      "status": "ready",
+      "license": "MIT"
+    },
+    {
+      "id": "sweatshirt",
+      "name": "Streetwear Hoodie & Sweatshirt",
+      "category": "Sweatshirt / Hoodie",
+      "modelUrl": "/assets/garments/sweatshirt/model.glb",
+      "metadataUrl": "/assets/garments/sweatshirt/metadata.json",
+      "status": "ready",
+      "license": "MIT"
+    },
+    {
+      "id": "lightweight-jacket",
+      "name": "Lightweight Sport Jacket",
+      "category": "Lightweight jacket",
+      "modelUrl": "/assets/garments/lightweight-jacket/model.glb",
+      "metadataUrl": "/assets/garments/lightweight-jacket/metadata.json",
+      "status": "ready",
+      "license": "MIT"
     }
   ]
 }

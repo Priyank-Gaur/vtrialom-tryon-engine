@@ -49,6 +49,7 @@ export class Garment3DLoader {
         throw new Error(`Failed to fetch 3D garment metadata from ${options.metadataUrl}`);
       }
       meta = (await res.json()) as Garment3DMetadata;
+      meta.anchors = meta.anchors ?? {};
     } else if (options.metadata) {
       meta = {
         id: options.id,
@@ -96,30 +97,60 @@ export class Garment3DLoader {
       }
     });
 
-    // Compute bounding box and dimensions
-    const box = new THREE.Box3().setFromObject(model);
-    const dimensions = new THREE.Vector3();
-    box.getSize(dimensions);
+    // 1. Initial bounding box inspection
+    const initialBox = new THREE.Box3().setFromObject(model);
+    const initialSize = new THREE.Vector3();
+    initialBox.getSize(initialSize);
 
-    const center = new THREE.Vector3();
-    box.getCenter(center);
+    // If depth is significantly greater than height and height is small, model was exported Z-up
+    if (initialSize.z > initialSize.y * 1.5 && initialSize.y < 0.5) {
+      model.rotation.x = -Math.PI / 2;
+    }
 
-    // Compute shoulder span from anchors or fallback to upper 75% width
-    let shoulderSpan = 0.45;
-    if (meta.anchors.leftShoulder && meta.anchors.rightShoulder) {
+    // 2. Normalize base scale to human metric proportions (~0.65m standard garment height)
+    const alignedBox = new THREE.Box3().setFromObject(model);
+    const alignedSize = new THREE.Vector3();
+    alignedBox.getSize(alignedSize);
+
+    const targetHeight = 0.65;
+    const baseScale = targetHeight / Math.max(alignedSize.y, 0.05);
+    model.scale.setScalar(baseScale);
+
+    // 3. Center model horizontally and align shoulder seam to (0, 0, 0)
+    const normBox = new THREE.Box3().setFromObject(model);
+    const normSize = new THREE.Vector3();
+    normBox.getSize(normSize);
+    const normCenter = new THREE.Vector3();
+    normBox.getCenter(normCenter);
+
+    // Shoulder line is ~16% below the top collar
+    const shoulderY = normBox.max.y - (normSize.y * 0.16);
+    const shoulderX = normCenter.x;
+    const shoulderZ = normCenter.z;
+
+    // Offset mesh within pivot group so that the shoulder midpoint sits at (0, 0, 0)
+    model.position.set(-shoulderX, -shoulderY, -shoulderZ);
+
+    const pivotGroup = new THREE.Group();
+    pivotGroup.name = `pivot-${meta.id}`;
+    pivotGroup.add(model);
+
+    // Compute shoulder span (distance across shoulder anchors)
+    let shoulderSpan = 0.42;
+    if (meta.anchors?.leftShoulder && meta.anchors?.rightShoulder) {
       const ls = new THREE.Vector3(...meta.anchors.leftShoulder);
       const rs = new THREE.Vector3(...meta.anchors.rightShoulder);
-      shoulderSpan = ls.distanceTo(rs);
+      shoulderSpan = ls.distanceTo(rs) * baseScale;
     } else {
-      shoulderSpan = Math.max(dimensions.x * 0.75, 0.3);
+      shoulderSpan = Math.max(normSize.x * 0.72, 0.38);
     }
 
     const loaded: Loaded3DGarment = {
       metadata: meta,
-      model,
-      dimensions,
+      model: pivotGroup,
+      dimensions: normSize,
       shoulderSpan,
-      center,
+      center: new THREE.Vector3(0, 0, 0),
     };
 
     this._cache.set(options.id, loaded);

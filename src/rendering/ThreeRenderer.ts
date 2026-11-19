@@ -53,6 +53,8 @@ export class ThreeRenderer {
       antialias: true,
       powerPreference: "high-performance",
     });
+    // Ensure transparent background for video overlay
+    this._renderer.setClearColor(0x000000, 0);
     this._renderer.outputColorSpace = THREE.SRGBColorSpace;
     this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this._renderer.toneMappingExposure = 1.0;
@@ -109,9 +111,11 @@ export class ThreeRenderer {
 
   /**
    * Resize renderer and update camera aspect ratio.
+   * Only reallocates WebGL buffers when dimensions actually change.
    */
   setSize(width: number, height: number, dpr = window.devicePixelRatio || 1): void {
     if (width <= 0 || height <= 0) return;
+    if (this._width === width && this._height === height) return;
     this._width = width;
     this._height = height;
     this._renderer.setPixelRatio(dpr);
@@ -132,13 +136,29 @@ export class ThreeRenderer {
 
     if (mesh) {
       this._garmentGroup.add(mesh);
+      this.domElement.style.display = "block";
+    } else {
+      this.clear();
+      this.domElement.style.display = "none";
     }
+  }
+
+  /**
+   * Clear the WebGL drawing buffer completely with transparent alpha.
+   */
+  clear(): void {
+    this._renderer.setClearColor(0x000000, 0);
+    this._renderer.clear();
   }
 
   /**
    * Render active 3D scene.
    */
   render(): void {
+    if (this._garmentGroup.children.length === 0) {
+      this.clear();
+      return;
+    }
     this._renderer.render(this._scene, this._camera);
   }
 

@@ -1,0 +1,31 @@
+{
+  "id": "lightweight-jacket",
+  "name": "Lightweight Sport Jacket",
+  "category": "Lightweight jacket",
+  "modelUrl": "/assets/garments/lightweight-jacket/model.glb",
+  "format": "GLB",
+  "dimensions": {
+    "width": 0.60,
+    "height": 0.70,
+    "depth": 0.30
+  },
+  "anchors": {
+    "neckline": [0.0, 0.26, 0.0],
+    "leftShoulder": [-0.23, 0.21, 0.0],
+    "rightShoulder": [0.23, 0.21, 0.0],
+    "chest": [0.0, 0.05, 0.07],
+    "hem": [0.0, -0.40, 0.0]
+  },
+  "scale": 1.08,
+  "source": {
+    "repository": "PowerAppsMR",
+    "url": "https://github.com/faizan8684/PowerAppsMR",
+    "license": "MIT",
+    "commercialUsePermitted": true
+  },
+  "fitting": {
+    "proportions": "regular",
+    "shoulderStiffness": 0.8,
+    "sleeveFollowTorso": 0.8
+  }
+}
