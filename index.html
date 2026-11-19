@@ -3,78 +3,55 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VTrialom — Virtual Try-On Engine (Dev)</title>
+    <title>VTrialom — Virtual Try-On Engine (Phase 1)</title>
     <style>
-      /* ------------------------------------------------------------------ */
-      /* Reset & base                                                         */
-      /* ------------------------------------------------------------------ */
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
       body {
         background: #0d0d0d;
         color: #e8e8e8;
         font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-        min-height: 100dvh;
+        height: 100dvh;
         display: grid;
         grid-template-rows: auto 1fr auto;
-        gap: 0;
-      }
-
-      /* ------------------------------------------------------------------ */
-      /* Header                                                               */
-      /* ------------------------------------------------------------------ */
-      header {
-        background: #111;
-        border-bottom: 1px solid #2a2a2a;
-        padding: 12px 24px;
-        display: flex;
-        align-items: center;
-        gap: 16px;
-      }
-
-      header h1 {
-        font-size: 1.1rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        color: #fff;
-      }
-
-      header .badge {
-        font-size: 0.65rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        padding: 2px 8px;
-        border-radius: 4px;
-        background: #2563eb;
-        color: #fff;
-      }
-
-      /* ------------------------------------------------------------------ */
-      /* Main layout                                                          */
-      /* ------------------------------------------------------------------ */
-      main {
-        display: grid;
-        grid-template-columns: 1fr 320px;
-        gap: 0;
         overflow: hidden;
       }
 
-      /* ------------------------------------------------------------------ */
-      /* Viewport — the engine renders here                                   */
-      /* ------------------------------------------------------------------ */
+      /* ---- Header ---- */
+      header {
+        background: #111;
+        border-bottom: 1px solid #2a2a2a;
+        padding: 10px 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+      }
+      header h1 { font-size: 1rem; font-weight: 700; color: #fff; }
+      .badge {
+        font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.08em; padding: 2px 7px; border-radius: 4px;
+        background: #2563eb; color: #fff;
+      }
+      .badge.green { background: #1a3a1a; color: #6ed86e; }
+
+      /* ---- Main layout ---- */
+      main {
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        overflow: hidden;
+      }
+
+      /* ---- Viewport ---- */
       #viewport {
         position: relative;
         background: #000;
         overflow: hidden;
       }
-
       #tryon-container {
         position: absolute;
         inset: 0;
       }
-
-      /* Placeholder shown before camera starts */
       #camera-placeholder {
         position: absolute;
         inset: 0;
@@ -82,149 +59,140 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 12px;
-        color: #555;
-        font-size: 0.9rem;
+        gap: 10px;
+        color: #444;
+        font-size: 0.85rem;
         pointer-events: none;
       }
+      #camera-placeholder svg { opacity: 0.3; }
 
-      #camera-placeholder svg {
-        opacity: 0.4;
-      }
-
-      /* ------------------------------------------------------------------ */
-      /* Debug panel                                                          */
-      /* ------------------------------------------------------------------ */
+      /* ---- Debug panel ---- */
       #debug-panel {
         background: #111;
         border-left: 1px solid #2a2a2a;
-        padding: 20px 16px;
+        padding: 14px 12px;
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 14px;
         overflow-y: auto;
       }
-
-      .panel-section {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
       .panel-label {
-        font-size: 0.65rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: #666;
+        font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.1em; color: #555; margin-bottom: 4px;
       }
+      .panel-section { display: flex; flex-direction: column; }
 
-      /* Status pill */
       #status-text {
-        font-size: 0.8rem;
-        color: #a3e4a3;
-        background: #0f2010;
-        border: 1px solid #1a4020;
-        border-radius: 6px;
-        padding: 8px 12px;
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        word-break: break-all;
-        min-height: 60px;
+        font-size: 0.72rem; color: #a3e4a3;
+        background: #0f2010; border: 1px solid #1a4020;
+        border-radius: 5px; padding: 7px 10px;
+        font-family: monospace; word-break: break-all; min-height: 48px;
       }
 
-      /* FPS counter */
-      #fps-counter {
-        font-size: 2rem;
-        font-weight: 800;
+      /* Metrics row */
+      .metrics-row {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+      }
+      .metric-box {
+        background: #161616; border: 1px solid #242424;
+        border-radius: 6px; padding: 8px 10px;
+      }
+      .metric-value {
+        font-size: 1.5rem; font-weight: 800;
         font-variant-numeric: tabular-nums;
-        color: #60a5fa;
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        color: #60a5fa; font-family: monospace;
+        line-height: 1;
+      }
+      .metric-label { font-size: 0.6rem; color: #555; margin-top: 2px; }
+
+      #pose-state {
+        font-size: 0.75rem; font-weight: 600; color: #555;
+        padding: 4px 8px; background: #161616; border-radius: 4px;
+        border: 1px solid #242424; font-family: monospace;
       }
 
-      /* Phase indicator */
-      .phase-info {
-        font-size: 0.75rem;
-        color: #888;
-        line-height: 1.6;
-      }
-
-      /* ------------------------------------------------------------------ */
-      /* Controls                                                             */
-      /* ------------------------------------------------------------------ */
-      #controls {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
+      /* Controls */
+      #controls { display: flex; flex-direction: column; gap: 6px; }
       button {
-        padding: 10px 16px;
-        border: none;
-        border-radius: 8px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        cursor: pointer;
+        padding: 9px 14px; border: none; border-radius: 7px;
+        font-size: 0.8rem; font-weight: 600; cursor: pointer;
         transition: opacity 0.15s, transform 0.1s;
       }
-
       button:active { transform: scale(0.97); }
-      button:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+      button:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+      #btn-start { background: #2563eb; color: #fff; }
+      #btn-stop  { background: #1f1f1f; color: #bbb; border: 1px solid #333; }
 
-      #btn-start {
-        background: #2563eb;
-        color: #fff;
+      /* Skeleton toggle */
+      .toggle-row {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 0.75rem; color: #888;
       }
+      .toggle-row input[type=checkbox] { accent-color: #60a5fa; cursor: pointer; }
 
-      #btn-stop {
-        background: #1f1f1f;
-        color: #bbb;
-        border: 1px solid #333;
+      /* Landmark list */
+      #landmark-list { font-family: monospace; font-size: 0.65rem; }
+      .lm-row {
+        display: grid; grid-template-columns: 68px 1fr 32px;
+        gap: 4px; padding: 2px 0; border-bottom: 1px solid #1a1a1a;
+        align-items: center;
       }
+      .lm-name { color: #888; }
+      .lm-val  { color: #ccc; }
+      .lm-vis  { color: #555; text-align: right; }
 
-      /* ------------------------------------------------------------------ */
-      /* Footer                                                               */
-      /* ------------------------------------------------------------------ */
+      /* Footer */
       footer {
-        background: #0a0a0a;
-        border-top: 1px solid #1e1e1e;
-        padding: 8px 24px;
-        font-size: 0.7rem;
-        color: #444;
-        display: flex;
-        justify-content: space-between;
+        background: #0a0a0a; border-top: 1px solid #1e1e1e;
+        padding: 6px 20px; font-size: 0.65rem; color: #333;
+        display: flex; justify-content: space-between; flex-shrink: 0;
       }
     </style>
   </head>
   <body>
     <header>
       <h1>VTrialom Try-On Engine</h1>
-      <span class="badge">Phase 0</span>
-      <span class="badge" style="background:#1a3a1a; color:#6ed86e;">Dev Build</span>
+      <span class="badge">Phase 1</span>
+      <span class="badge green">Body Tracking</span>
     </header>
 
     <main>
-      <!-- Camera + engine output viewport -->
+      <!-- Camera + engine output -->
       <div id="viewport">
         <div id="tryon-container"></div>
         <div id="camera-placeholder">
-          <!-- Camera icon SVG -->
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.361a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
           </svg>
-          <span>Press Start Camera to begin</span>
+          <span>Press Start to load MediaPipe and open camera</span>
         </div>
       </div>
 
       <!-- Debug panel -->
       <aside id="debug-panel">
+
         <div class="panel-section">
           <div class="panel-label">Engine Status</div>
           <div id="status-text">Engine state: uninitialised</div>
         </div>
 
         <div class="panel-section">
-          <div class="panel-label">Render Loop</div>
-          <div id="fps-counter">– FPS</div>
+          <div class="panel-label">Performance</div>
+          <div class="metrics-row">
+            <div class="metric-box">
+              <div class="metric-value" id="fps-counter">–</div>
+              <div class="metric-label">FPS</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-value" id="latency-counter">–</div>
+              <div class="metric-label">Inference ms</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-label">Pose Detection</div>
+          <div id="pose-state">–</div>
         </div>
 
         <div class="panel-section">
@@ -233,37 +201,40 @@
             <button id="btn-start">▶ Start Camera</button>
             <button id="btn-stop" disabled>■ Stop Camera</button>
           </div>
-        </div>
-
-        <div class="panel-section">
-          <div class="panel-label">Current Phase</div>
-          <div class="phase-info">
-            <strong>Phase 0 — Architecture &amp; Setup</strong><br>
-            Establishes the project skeleton, engine lifecycle, camera manager,
-            and public API contract.<br><br>
-            <em>Next: Phase 1 — Body Tracking</em>
+          <div class="toggle-row" style="margin-top:8px">
+            <input type="checkbox" id="toggle-skeleton" checked />
+            <label for="toggle-skeleton">Show skeleton overlay</label>
           </div>
         </div>
 
         <div class="panel-section">
-          <div class="panel-label">What to verify</div>
-          <div class="phase-info">
-            ✓ App loads without errors<br>
-            ✓ Start Camera → browser asks for permission<br>
-            ✓ FPS counter updates (~30/s)<br>
-            ✓ Stop Camera → state returns to ready<br>
-            ✓ No console errors
+          <div class="panel-label">Key Landmarks (normalised)</div>
+          <div id="landmark-list">
+            <span style="color:#555;font-size:0.65rem">Start camera to see data</span>
           </div>
         </div>
+
+        <div class="panel-section">
+          <div class="panel-label" style="color:#333">Phase 1 checklist</div>
+          <div style="font-size:0.65rem;color:#444;line-height:1.7">
+            ✓ Camera feed visible<br>
+            ✓ Skeleton follows body<br>
+            ✓ FPS ≥ 20<br>
+            ✓ Inference latency shown<br>
+            ✓ Raise arms → tracking follows<br>
+            ✓ Rotate torso → still tracks<br>
+            ✓ Step back → still tracks
+          </div>
+        </div>
+
       </aside>
     </main>
 
     <footer>
-      <span>VTrialom Try-On Engine © 2024</span>
-      <span>localhost:5173 — Vite + TypeScript</span>
+      <span>VTrialom Try-On Engine — Phase 1: Body Tracking</span>
+      <span>localhost:5173</span>
     </footer>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-

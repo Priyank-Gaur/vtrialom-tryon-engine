@@ -28,8 +28,27 @@ vi.mock("../../src/camera/CameraManager", () => {
   };
 });
 
+// Stub PoseTracker so no MediaPipe WASM or network models are loaded in unit tests
+vi.mock("../../src/tracking/PoseTracker", () => {
+  return {
+    PoseTracker: vi.fn().mockImplementation(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      dispose: vi.fn(),
+      detectAsync: vi.fn(),
+      latestResult: {
+        landmarks: [],
+        bodyGeometry: null,
+        raw: null,
+        timestampMs: 0,
+        poseDetected: false,
+        inferenceLatencyMs: 0,
+      },
+    })),
+  };
+});
+
 // requestAnimationFrame is not available in jsdom — provide a stub
-globalThis.requestAnimationFrame = vi.fn((cb) => {
+globalThis.requestAnimationFrame = vi.fn(() => {
   // Don't actually call cb to avoid an infinite loop in tests
   return 1;
 });

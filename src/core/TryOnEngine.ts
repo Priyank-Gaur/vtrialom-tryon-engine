@@ -6,19 +6,18 @@
  * Responsibility:
  *   - Own and expose the engine's public lifecycle API.
  *   - Hold references to all subsystem managers.
- *   - Coordinate the per-frame processing pipeline.
+ *   - Coordinate the single per-frame processing pipeline.
  *   - Emit typed events to allow the host application to react to state changes.
  *
- * What it does NOT do:
- *   - Understand webcam hardware details (delegated to CameraManager).
- *   - Understand ML model internals (delegated to PoseTracker / PersonSegmenter).
- *   - Understand rendering primitives (delegated to Renderer / Compositor).
+ * Pipeline (single rAF loop, executed in order each frame):
+ *   1. Submit video frame to PoseTracker (async — result arrives next tick)
+ *   2. Read latest TrackingResult
+ *   3. Emit trackingresult event
+ *   4. Emit framerendered event
+ *   [Future phases insert segmentation, fitting, deformation, compositing here]
  *
- * This separation means each subsystem can be tested independently and swapped
- * without touching the engine shell.
- *
- * PHASE 0: Only the skeleton of the engine is implemented.
- * Subsystem integrations are added in later phases.
+ * PHASE 1: Camera + PoseTracker integrated. Segmentation, garment and
+ * rendering subsystems are stubs added in later phases.
  */
 
 import {
@@ -31,24 +30,25 @@ import {
 } from "./EngineConfig.js";
 import {
   EngineState,
-  EngineEventType,
   StateChangeEvent,
   EngineErrorEvent,
   GarmentMetadata,
 } from "./types.js";
 import { CameraManager } from "../camera/CameraManager.js";
+import { PoseTracker, type TrackingResult } from "../tracking/PoseTracker.js";
 
 // ---------------------------------------------------------------------------
-// Public event map — typed overloads for addEventListener
+// Public event map
 // ---------------------------------------------------------------------------
 export interface TryOnEngineEventMap {
   statechange: CustomEvent<StateChangeEvent>;
   error: CustomEvent<EngineErrorEvent>;
+  trackingresult: CustomEvent<TrackingResult>;
   framerendered: CustomEvent<{ timestampMs: number }>;
 }
 
 // ---------------------------------------------------------------------------
-// Minimal garment load options (expanded in Phase 3)
+// Garment load options (stub until Phase 3)
 // ---------------------------------------------------------------------------
 export interface LoadGarmentOptions {
   id: string;
@@ -60,25 +60,31 @@ export interface LoadGarmentOptions {
 // TryOnEngine
 // ---------------------------------------------------------------------------
 export class TryOnEngine extends EventTarget {
-  // ---- resolved configuration ----
   private readonly _config: ReturnType<typeof resolveConfig>;
 
-  // ---- state ----
   private _state: EngineState = "uninitialised";
 
-  // ---- subsystems (populated in later phases) ----
+  // Subsystems
   private _camera: CameraManager | null = null;
-  // private _tracker: PoseTracker | null = null;      // Phase 1
-  // private _segmenter: PersonSegmenter | null = null; // Phase 2
+  private _tracker: PoseTracker | null = null;
+  // private _segmenter: PersonSegmenter | null = null;  // Phase 2
   // private _garmentLoader: GarmentLoader | null = null; // Phase 3
-  // private _renderer: Renderer | null = null;         // Phase 5
+  // private _compositor: Compositor | null = null;       // Phase 6
 
-  // ---- active garment ----
   private _activeGarment: GarmentMetadata | null = null;
 
-  // ---- render loop ----
+  // Single unified render loop
   private _animFrameId: number | null = null;
   private _lastFrameTime = 0;
+
+  // Diagnostics exposed to the dev shell and future perf tools
+  private _diagnostics = {
+    fps: 0,
+    frameCount: 0,
+    lastFpsSampleTime: 0,
+    inferenceLatencyMs: 0,
+    poseDetected: false,
+  };
 
   constructor(config: EngineConfig) {
     super();
@@ -89,10 +95,6 @@ export class TryOnEngine extends EventTarget {
   // Public API — Lifecycle
   // =========================================================================
 
-  /**
-   * Allocate subsystems and load ML models.
-   * Must be called before startCamera() or loadGarment().
-   */
   async initialize(): Promise<void> {
     if (this._state !== "uninitialised") {
       throw new Error(
@@ -104,9 +106,12 @@ export class TryOnEngine extends EventTarget {
     this._transitionTo("initialising");
 
     try {
-      // Phase 0: Instantiate CameraManager only.
-      // Tracking and segmentation managers are added in Phase 1 & 2.
       this._camera = new CameraManager(this._config.camera);
+
+      // Phase 1: initialise the pose tracker.
+      // This downloads and compiles the WASM + model (~1-3s on first load).
+      this._tracker = new PoseTracker(this._config.tracking);
+      await this._tracker.initialize();
 
       this._transitionTo("ready");
     } catch (err) {
@@ -116,10 +121,6 @@ export class TryOnEngine extends EventTarget {
     }
   }
 
-  /**
-   * Request camera permission and begin the video feed.
-   * Engine must be in "ready" or "running" state.
-   */
   async startCamera(): Promise<void> {
     this._assertState(["ready", "running"], "startCamera");
 
@@ -135,7 +136,6 @@ export class TryOnEngine extends EventTarget {
     }
   }
 
-  /** Stop the camera feed without disposing the engine. */
   async stopCamera(): Promise<void> {
     this._stopRenderLoop();
     await this._camera?.stop();
@@ -145,26 +145,17 @@ export class TryOnEngine extends EventTarget {
     }
   }
 
-  /**
-   * Load a garment asset and make it active.
-   * Phase 3 implementation will parse metadata; for now records a placeholder.
-   */
   async loadGarment(_options: LoadGarmentOptions): Promise<void> {
     this._assertState(["ready", "running"], "loadGarment");
-    // Full implementation in Phase 3.
-    // The method signature is established here so the host application can
-    // call it without changes in later phases.
     console.warn(
       "[TryOnEngine] loadGarment() is a stub — full implementation in Phase 3."
     );
   }
 
-  /**
-   * Release all resources: camera stream, ML models, canvas, event listeners.
-   * The engine cannot be used after dispose(); construct a new instance instead.
-   */
   dispose(): void {
     this._stopRenderLoop();
+    this._tracker?.dispose();
+    this._tracker = null;
     this._camera?.dispose();
     this._camera = null;
     this._activeGarment = null;
@@ -197,21 +188,27 @@ export class TryOnEngine extends EventTarget {
     return this._activeGarment;
   }
 
-  /**
-   * The raw video element driven by the camera stream.
-   * Exposed so the dev shell (main.ts) and future Renderer can draw frames.
-   * Returns null before startCamera() is called.
-   */
   get videoElement(): HTMLVideoElement | null {
     return this._camera?.videoElement ?? null;
   }
 
+  get diagnostics() {
+    return { ...this._diagnostics };
+  }
+
+  get latestTrackingResult(): TrackingResult | null {
+    return this._tracker?.latestResult ?? null;
+  }
+
   // =========================================================================
-  // Render loop (Phase 0: frame counter only)
+  // Single unified render loop
   // =========================================================================
 
   private _startRenderLoop(): void {
     if (this._animFrameId !== null) return;
+
+    this._diagnostics.lastFpsSampleTime = performance.now();
+    this._diagnostics.frameCount = 0;
 
     const tick = (now: number) => {
       if (this._state !== "running") return;
@@ -239,10 +236,53 @@ export class TryOnEngine extends EventTarget {
 
   /**
    * Per-frame processing pipeline.
-   * Phase 0: emits a framerendered event with the timestamp.
-   * Later phases will add: capture → track → segment → fit → deform → composite.
+   *
+   * Phase 1 pipeline:
+   *   1. Submit video frame to PoseTracker (non-blocking, result via callback)
+   *   2. Read latest TrackingResult (may be from previous tick — that is fine)
+   *   3. Update diagnostics
+   *   4. Emit events for the dev shell / host app
+   *
+   * Future phases will insert after step 2:
+   *   - PersonSegmenter.segmentAsync()
+   *   - GarmentFitter.fit()
+   *   - MeshDeformer.deform()
+   *   - Compositor.composite()
    */
   private _onFrame(timestampMs: number): void {
+    const video = this._camera?.videoElement;
+
+    // 1. Submit frame to tracker
+    if (this._tracker && video) {
+      this._tracker.detectAsync(video, timestampMs);
+    }
+
+    // 2. Read latest result (async callback may update this between ticks)
+    const tracking = this._tracker?.latestResult;
+
+    // 3. Update diagnostics
+    this._diagnostics.frameCount++;
+    const diagElapsed = timestampMs - this._diagnostics.lastFpsSampleTime;
+    if (diagElapsed >= 1000) {
+      this._diagnostics.fps = Math.round(
+        (this._diagnostics.frameCount * 1000) / diagElapsed
+      );
+      this._diagnostics.frameCount = 0;
+      this._diagnostics.lastFpsSampleTime = timestampMs;
+    }
+
+    if (tracking) {
+      this._diagnostics.inferenceLatencyMs = tracking.inferenceLatencyMs;
+      this._diagnostics.poseDetected = tracking.poseDetected;
+    }
+
+    // 4. Emit events
+    if (tracking) {
+      this.dispatchEvent(
+        new CustomEvent<TrackingResult>("trackingresult", { detail: tracking })
+      );
+    }
+
     this.dispatchEvent(
       new CustomEvent<{ timestampMs: number }>("framerendered", {
         detail: { timestampMs },
@@ -282,4 +322,3 @@ export class TryOnEngine extends EventTarget {
     );
   }
 }
-
