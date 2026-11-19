@@ -15,7 +15,7 @@
 
 import { TryOnEngine, LoadGarmentOptions } from "../core/TryOnEngine.js";
 import { EngineConfig } from "../core/EngineConfig.js";
-import type { EngineState, EngineErrorEvent } from "../core/types.js";
+import type { EngineState, EngineErrorEvent, SegmentationResult } from "../core/types.js";
 import type { TrackingResult } from "../tracking/PoseTracker.js";
 
 export interface TryOnComponentOptions {
@@ -67,6 +67,14 @@ export class VTrialomTryOn {
       options.container.dispatchEvent(
         new CustomEvent("vtrialom:trackingresult", {
           detail: (e as CustomEvent<TrackingResult>).detail,
+        })
+      );
+    });
+
+    this._engine.addEventListener("segmentationresult", (e) => {
+      options.container.dispatchEvent(
+        new CustomEvent("vtrialom:segmentationresult", {
+          detail: (e as CustomEvent<SegmentationResult>).detail,
         })
       );
     });
@@ -133,6 +141,10 @@ export class VTrialomTryOn {
 
   get latestTrackingResult(): TrackingResult | null {
     return this._engine.latestTrackingResult;
+  }
+
+  get latestSegmentationResult(): SegmentationResult | null {
+    return this._engine.latestSegmentationResult;
   }
 
   // =========================================================================

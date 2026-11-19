@@ -10,14 +10,13 @@
  *   - Emit typed events to allow the host application to react to state changes.
  *
  * Pipeline (single rAF loop, executed in order each frame):
- *   1. Submit video frame to PoseTracker (async — result arrives next tick)
- *   2. Read latest TrackingResult
- *   3. Emit trackingresult event
- *   4. Emit framerendered event
- *   [Future phases insert segmentation, fitting, deformation, compositing here]
+ *   1. Submit video frame to PoseTracker (33 body landmarks)
+ *   2. Submit video frame to PersonSegmenter (foreground silhouette mask)
+ *   3. Feed pose landmarks + mask to OcclusionManager (arm/hand foreground analysis)
+ *   4. Emit trackingresult and segmentationresult events
+ *   5. Emit framerendered event
  *
- * PHASE 1: Camera + PoseTracker integrated. Segmentation, garment and
- * rendering subsystems are stubs added in later phases.
+ * PHASE 2: Camera, PoseTracker, PersonSegmenter, and OcclusionManager integrated.
  */
 
 import {
@@ -33,9 +32,12 @@ import {
   StateChangeEvent,
   EngineErrorEvent,
   GarmentMetadata,
+  SegmentationResult,
 } from "./types.js";
 import { CameraManager } from "../camera/CameraManager.js";
 import { PoseTracker, type TrackingResult } from "../tracking/PoseTracker.js";
+import { PersonSegmenter } from "../segmentation/PersonSegmenter.js";
+import { OcclusionManager } from "../segmentation/OcclusionManager.js";
 
 // ---------------------------------------------------------------------------
 // Public event map
@@ -44,6 +46,7 @@ export interface TryOnEngineEventMap {
   statechange: CustomEvent<StateChangeEvent>;
   error: CustomEvent<EngineErrorEvent>;
   trackingresult: CustomEvent<TrackingResult>;
+  segmentationresult: CustomEvent<SegmentationResult>;
   framerendered: CustomEvent<{ timestampMs: number }>;
 }
 
@@ -67,7 +70,8 @@ export class TryOnEngine extends EventTarget {
   // Subsystems
   private _camera: CameraManager | null = null;
   private _tracker: PoseTracker | null = null;
-  // private _segmenter: PersonSegmenter | null = null;  // Phase 2
+  private _segmenter: PersonSegmenter | null = null;
+  private _occlusionManager: OcclusionManager | null = null;
   // private _garmentLoader: GarmentLoader | null = null; // Phase 3
   // private _compositor: Compositor | null = null;       // Phase 6
 
@@ -82,9 +86,13 @@ export class TryOnEngine extends EventTarget {
     fps: 0,
     frameCount: 0,
     lastFpsSampleTime: 0,
-    inferenceLatencyMs: 0,
+    poseInferenceLatencyMs: 0,
+    segmentationLatencyMs: 0,
     poseDetected: false,
+    personSegmented: false,
   };
+
+  private _latestSegmentationResult: SegmentationResult | null = null;
 
   constructor(config: EngineConfig) {
     super();
@@ -108,10 +116,14 @@ export class TryOnEngine extends EventTarget {
     try {
       this._camera = new CameraManager(this._config.camera);
 
-      // Phase 1: initialise the pose tracker.
-      // This downloads and compiles the WASM + model (~1-3s on first load).
+      // Phase 1: Initialize the pose tracker
       this._tracker = new PoseTracker(this._config.tracking);
       await this._tracker.initialize();
+
+      // Phase 2: Initialize person segmenter & occlusion manager
+      this._segmenter = new PersonSegmenter(this._config.segmentation);
+      await this._segmenter.initialize();
+      this._occlusionManager = new OcclusionManager();
 
       this._transitionTo("ready");
     } catch (err) {
@@ -156,9 +168,13 @@ export class TryOnEngine extends EventTarget {
     this._stopRenderLoop();
     this._tracker?.dispose();
     this._tracker = null;
+    this._segmenter?.dispose();
+    this._segmenter = null;
+    this._occlusionManager = null;
     this._camera?.dispose();
     this._camera = null;
     this._activeGarment = null;
+    this._latestSegmentationResult = null;
     this._transitionTo("disposed");
   }
 
@@ -200,6 +216,10 @@ export class TryOnEngine extends EventTarget {
     return this._tracker?.latestResult ?? null;
   }
 
+  get latestSegmentationResult(): SegmentationResult | null {
+    return this._latestSegmentationResult;
+  }
+
   // =========================================================================
   // Single unified render loop
   // =========================================================================
@@ -237,30 +257,44 @@ export class TryOnEngine extends EventTarget {
   /**
    * Per-frame processing pipeline.
    *
-   * Phase 1 pipeline:
-   *   1. Submit video frame to PoseTracker (non-blocking, result via callback)
-   *   2. Read latest TrackingResult (may be from previous tick — that is fine)
-   *   3. Update diagnostics
-   *   4. Emit events for the dev shell / host app
-   *
-   * Future phases will insert after step 2:
-   *   - PersonSegmenter.segmentAsync()
-   *   - GarmentFitter.fit()
-   *   - MeshDeformer.deform()
-   *   - Compositor.composite()
+   * Ordered sequence:
+   *   1. Submit video frame to PoseTracker (33 body landmarks)
+   *   2. Submit video frame to PersonSegmenter (foreground person mask)
+   *   3. Perform Occlusion Analysis (arms/hands vs torso)
+   *   4. Update diagnostics (FPS, latency, states)
+   *   5. Dispatch typed events
    */
   private _onFrame(timestampMs: number): void {
     const video = this._camera?.videoElement;
 
-    // 1. Submit frame to tracker
+    // 1. Submit frame to pose tracker
     if (this._tracker && video) {
       this._tracker.detectAsync(video, timestampMs);
     }
 
-    // 2. Read latest result (async callback may update this between ticks)
-    const tracking = this._tracker?.latestResult;
+    const tracking = this._tracker?.latestResult ?? null;
 
-    // 3. Update diagnostics
+    // 2. Submit frame to person segmenter
+    let mask = null;
+    if (this._segmenter && video) {
+      mask = this._segmenter.segmentFrame(video, timestampMs);
+    }
+
+    // 3. Occlusion analysis (arms & hands crossing torso)
+    let occlusion = null;
+    if (this._occlusionManager && tracking && tracking.poseDetected) {
+      occlusion = this._occlusionManager.analyzeOcclusion(tracking.landmarks);
+    }
+
+    const segResult: SegmentationResult = {
+      mask,
+      occlusion,
+      inferenceLatencyMs: this._segmenter?.inferenceLatencyMs ?? 0,
+      timestampMs,
+    };
+    this._latestSegmentationResult = segResult;
+
+    // 4. Update diagnostics
     this._diagnostics.frameCount++;
     const diagElapsed = timestampMs - this._diagnostics.lastFpsSampleTime;
     if (diagElapsed >= 1000) {
@@ -272,16 +306,27 @@ export class TryOnEngine extends EventTarget {
     }
 
     if (tracking) {
-      this._diagnostics.inferenceLatencyMs = tracking.inferenceLatencyMs;
+      this._diagnostics.poseInferenceLatencyMs = tracking.inferenceLatencyMs;
       this._diagnostics.poseDetected = tracking.poseDetected;
     }
 
-    // 4. Emit events
+    if (this._segmenter) {
+      this._diagnostics.segmentationLatencyMs = this._segmenter.inferenceLatencyMs;
+      this._diagnostics.personSegmented = mask !== null;
+    }
+
+    // 5. Emit events
     if (tracking) {
       this.dispatchEvent(
         new CustomEvent<TrackingResult>("trackingresult", { detail: tracking })
       );
     }
+
+    this.dispatchEvent(
+      new CustomEvent<SegmentationResult>("segmentationresult", {
+        detail: segResult,
+      })
+    );
 
     this.dispatchEvent(
       new CustomEvent<{ timestampMs: number }>("framerendered", {

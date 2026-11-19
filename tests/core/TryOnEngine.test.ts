@@ -47,6 +47,19 @@ vi.mock("../../src/tracking/PoseTracker", () => {
   };
 });
 
+// Stub PersonSegmenter so no MediaPipe segmentation models are loaded in unit tests
+vi.mock("../../src/segmentation/PersonSegmenter", () => {
+  return {
+    PersonSegmenter: vi.fn().mockImplementation(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      dispose: vi.fn(),
+      segmentFrame: vi.fn().mockReturnValue(null),
+      inferenceLatencyMs: 0,
+      latestMask: null,
+    })),
+  };
+});
+
 // requestAnimationFrame is not available in jsdom — provide a stub
 globalThis.requestAnimationFrame = vi.fn(() => {
   // Don't actually call cb to avoid an infinite loop in tests

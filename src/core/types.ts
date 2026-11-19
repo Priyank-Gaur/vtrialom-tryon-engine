@@ -82,15 +82,52 @@ export interface BodyGeometry {
 }
 
 // ---------------------------------------------------------------------------
-// Segmentation
+// Segmentation & Occlusion
 // ---------------------------------------------------------------------------
 
-/** Binary mask produced by the segmentation module. */
+/** Binary or confidence mask produced by the segmentation module. */
 export interface SegmentationMask {
   /** Confidence values in [0,1] per pixel, row-major, length = width*height. */
   data: Float32Array;
   width: number;
   height: number;
+}
+
+/** 2D convex or non-convex polygon represented as a list of normalised vertices. */
+export type NormalisedPolygon = NormalisedPoint2D[];
+
+/** State and geometry of body-part occlusion relative to the torso. */
+export interface OcclusionState {
+  /** True if the left arm/hand is positioned in front of or across the torso. */
+  isLeftArmOccludingTorso: boolean;
+  /** True if the right arm/hand is positioned in front of or across the torso. */
+  isRightArmOccludingTorso: boolean;
+  /** True if left hand/wrist is inside the torso bounding area. */
+  isLeftHandOverTorso: boolean;
+  /** True if right hand/wrist is inside the torso bounding area. */
+  isRightHandOverTorso: boolean;
+  /** Estimated ratio [0,1] of the left arm overlapping the torso region. */
+  leftArmOverlapRatio: number;
+  /** Estimated ratio [0,1] of the right arm overlapping the torso region. */
+  rightArmOverlapRatio: number;
+  /** Estimated torso bounding polygon in normalised coordinates. */
+  torsoPolygon: NormalisedPolygon;
+  /** Estimated left arm sleeve/forearm polygon in normalised coordinates. */
+  leftArmPolygon: NormalisedPolygon;
+  /** Estimated right arm sleeve/forearm polygon in normalised coordinates. */
+  rightArmPolygon: NormalisedPolygon;
+}
+
+/** Result produced by PersonSegmenter and OcclusionManager each frame. */
+export interface SegmentationResult {
+  /** Smoothed foreground person mask. Null if segmentation failed or skipped. */
+  mask: SegmentationMask | null;
+  /** Body-part occlusion analysis based on pose landmarks and regions. */
+  occlusion: OcclusionState | null;
+  /** Time taken in milliseconds for the ML segmentation model inference. */
+  inferenceLatencyMs: number;
+  /** Timestamp of the frame processed (ms). */
+  timestampMs: number;
 }
 
 // ---------------------------------------------------------------------------
