@@ -19,7 +19,7 @@
     "leftSleeveTip": [-0.27, 0.08, 0.0],
     "rightSleeveTip": [0.27, 0.08, 0.0]
   },
-  "positionOffset": [0.0, -0.08, 0.0],
+  "positionOffset": [0.0, 0.0, 0.0],
   "scale": 1.0,
   "source": {
     "repository": "project_threejs_ai",

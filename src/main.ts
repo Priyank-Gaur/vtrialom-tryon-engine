@@ -229,7 +229,7 @@ async function main() {
         threeRenderer.setSize(w, h);
         if (toggle3D.checked && active3DGarment && latestTracking?.bodyGeometry) {
           const fit3D = fitter3D.fit(latestTracking.bodyGeometry, active3DGarment, threeRenderer.camera);
-          threeRenderer.render();
+          threeRenderer.render(latestTracking.bodyGeometry);
 
           // Reflect 3D fitting metrics in UI
           fittingScaleEl.textContent = `${(fit3D.scale.x * 100).toFixed(0)}%`;

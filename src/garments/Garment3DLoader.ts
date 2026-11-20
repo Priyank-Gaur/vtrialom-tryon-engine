@@ -123,10 +123,15 @@ export class Garment3DLoader {
     const normCenter = new THREE.Vector3();
     normBox.getCenter(normCenter);
 
-    // Shoulder line is ~16% below the top collar
-    const shoulderY = normBox.max.y - (normSize.y * 0.16);
-    const shoulderX = normCenter.x;
-    const shoulderZ = normCenter.z;
+    let shoulderX = normCenter.x;
+    let shoulderY = normBox.max.y - (normSize.y * 0.16);
+    let shoulderZ = normCenter.z;
+
+    if (meta.anchors?.leftShoulder && meta.anchors?.rightShoulder) {
+      shoulderX = ((meta.anchors.leftShoulder[0] + meta.anchors.rightShoulder[0]) / 2) * baseScale;
+      shoulderY = ((meta.anchors.leftShoulder[1] + meta.anchors.rightShoulder[1]) / 2) * baseScale;
+      shoulderZ = ((meta.anchors.leftShoulder[2] + meta.anchors.rightShoulder[2]) / 2) * baseScale;
+    }
 
     // Offset mesh within pivot group so that the shoulder midpoint sits at (0, 0, 0)
     model.position.set(-shoulderX, -shoulderY, -shoulderZ);

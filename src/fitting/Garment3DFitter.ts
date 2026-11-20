@@ -56,8 +56,10 @@ export class Garment3DFitter {
 
     const posX = (midXNorm - 0.5) * frustumWidth;
     const posY = -(midYNorm - 0.5) * frustumHeight;
-    // Slight forward offset (+Z towards camera) so garment sits on the chest
-    const posZ = 0.05 + ((ls?.z && rs?.z) ? -((ls.z + rs.z) / 2.0) * 0.5 : 0.0);
+    // Align Z depth to the user's shoulder plane, matching the virtual body occluder
+    // In MediaPipe: negative z is closer to camera -> in Three.js closer is +Z.
+    const rawZ = (ls?.z !== undefined && rs?.z !== undefined) ? (ls.z + rs.z) / 2.0 : 0.0;
+    const posZ = -rawZ * 0.4 + 0.005;
 
     this._tmpPos.set(posX, posY, posZ);
 

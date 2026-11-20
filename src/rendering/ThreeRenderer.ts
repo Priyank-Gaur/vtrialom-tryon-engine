@@ -6,13 +6,16 @@
  *   of the 2D video/canvas stream.
  *
  * Design:
- *   - PerspectiveCamera calibrated to typical webcam FOV (60 degrees).
+ *   - PerspectiveCamera calibrated to typical webcam FOV (50 degrees).
  *   - Transparent background (alpha: true) so video feed remains visible beneath.
- *   - Studio lighting: ambient + directional key light + rim light.
+ *   - Integrated BodyOccluder3D for depth-buffer occlusion of neck, head, and arms.
+ *   - Studio cloth lighting: ambient + key light + fill light + subtle rim light.
  *   - Resource disposal for clean garbage collection on teardown.
  */
 
 import * as THREE from "three";
+import { BodyOccluder3D } from "./BodyOccluder3D.js";
+import type { BodyGeometry } from "../core/types.js";
 
 export interface ThreeRendererOptions {
   canvas?: HTMLCanvasElement;
@@ -28,9 +31,11 @@ export class ThreeRenderer {
   private readonly _camera: THREE.PerspectiveCamera;
 
   private _garmentGroup: THREE.Group;
+  private _bodyOccluder: BodyOccluder3D;
   private _ambientLight: THREE.AmbientLight;
   private _keyLight: THREE.DirectionalLight;
   private _fillLight: THREE.DirectionalLight;
+  private _rimLight: THREE.DirectionalLight;
 
   private _width = 640;
   private _height = 480;
@@ -64,21 +69,30 @@ export class ThreeRenderer {
     // Position camera along +Z axis looking at origin
     this._camera.position.set(0, 0, 2.0);
 
-    // Garment container node
+    // 1. Virtual Body Depth Occluder (rendered first at renderOrder = -1)
+    this._bodyOccluder = new BodyOccluder3D();
+    this._scene.add(this._bodyOccluder.group);
+
+    // 2. Garment container node
     this._garmentGroup = new THREE.Group();
+    this._garmentGroup.name = "garment-layer";
     this._scene.add(this._garmentGroup);
 
-    // Studio lighting setup
-    this._ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+    // 3. Studio lighting calibrated for fabric realism
+    this._ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
     this._scene.add(this._ambientLight);
 
-    this._keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    this._keyLight.position.set(1, 2, 2.5);
+    this._keyLight = new THREE.DirectionalLight(0xfffaed, 1.1);
+    this._keyLight.position.set(1.2, 2.0, 2.5);
     this._scene.add(this._keyLight);
 
-    this._fillLight = new THREE.DirectionalLight(0xbfdbfe, 0.8);
-    this._fillLight.position.set(-1, 0.5, 1.5);
+    this._fillLight = new THREE.DirectionalLight(0xdbeafe, 0.5);
+    this._fillLight.position.set(-1.2, 0.5, 1.8);
     this._scene.add(this._fillLight);
+
+    this._rimLight = new THREE.DirectionalLight(0xffffff, 0.35);
+    this._rimLight.position.set(0, -1.0, -2.0);
+    this._scene.add(this._rimLight);
   }
 
   // -------------------------------------------------------------------------
@@ -99,6 +113,10 @@ export class ThreeRenderer {
 
   get garmentGroup(): THREE.Group {
     return this._garmentGroup;
+  }
+
+  get bodyOccluder(): BodyOccluder3D {
+    return this._bodyOccluder;
   }
 
   get width(): number {
@@ -138,6 +156,7 @@ export class ThreeRenderer {
       this._garmentGroup.add(mesh);
       this.domElement.style.display = "block";
     } else {
+      this._bodyOccluder.visible = false;
       this.clear();
       this.domElement.style.display = "none";
     }
@@ -152,13 +171,21 @@ export class ThreeRenderer {
   }
 
   /**
-   * Render active 3D scene.
+   * Render active 3D scene, updating body occluder with live landmarks.
    */
-  render(): void {
+  render(body?: BodyGeometry): void {
     if (this._garmentGroup.children.length === 0) {
       this.clear();
       return;
     }
+
+    // Update body occluder depth mask if body geometry is available
+    if (body) {
+      this._bodyOccluder.update(body, this._camera);
+    } else {
+      this._bodyOccluder.visible = false;
+    }
+
     this._renderer.render(this._scene, this._camera);
   }
 
@@ -167,6 +194,7 @@ export class ThreeRenderer {
    */
   dispose(): void {
     this.setGarmentMesh(null);
+    this._bodyOccluder.dispose();
     this._renderer.dispose();
   }
 }
