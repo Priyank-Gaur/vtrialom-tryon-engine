@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VTrialom — Virtual Try-On Engine (Phase 4: Garment Fitting)</title>
+    <title>VTrialom — V-Wear Real-Time AI Virtual Try-On</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
       body {
-        background: #0d0d0d;
-        color: #e8e8e8;
-        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+        background: #09090b;
+        color: #f4f4f5;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         height: 100dvh;
         display: grid;
         grid-template-rows: auto 1fr auto;
@@ -19,39 +19,84 @@
 
       /* ---- Header ---- */
       header {
-        background: #111;
-        border-bottom: 1px solid #2a2a2a;
+        background: #121215;
+        border-bottom: 1px solid #27272a;
         padding: 10px 20px;
         display: flex;
         align-items: center;
-        gap: 12px;
+        justify-content: space-between;
         flex-shrink: 0;
       }
-      header h1 { font-size: 1rem; font-weight: 700; color: #fff; }
+      .brand-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      header h1 { font-size: 1.05rem; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
       .badge {
-        font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.08em; padding: 2px 7px; border-radius: 4px;
+        font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.08em; padding: 3px 8px; border-radius: 6px;
         background: #2563eb; color: #fff;
       }
-      .badge.green { background: #1a3a1a; color: #6ed86e; }
-      .badge.purple { background: #3b1d54; color: #d8b4fe; }
+      .badge.vwear { background: linear-gradient(135deg, #a855f7, #6366f1); color: #fff; }
+      .badge.green { background: #064e3b; color: #6ee7b7; border: 1px solid #059669; }
+
+      /* Mode Switcher Tabs in Header */
+      .mode-switcher {
+        display: flex;
+        background: #1c1c21;
+        border: 1px solid #2e2e38;
+        border-radius: 8px;
+        padding: 2px;
+        gap: 2px;
+      }
+      .mode-tab {
+        background: transparent;
+        color: #a1a1aa;
+        border: none;
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .mode-tab:hover { color: #fff; }
+      .mode-tab.active {
+        background: #3b82f6;
+        color: #fff;
+      }
+      .mode-tab.active.vwear-tab {
+        background: linear-gradient(135deg, #9333ea, #4f46e5);
+      }
 
       /* ---- Main layout ---- */
       main {
         display: grid;
-        grid-template-columns: 1fr 340px;
+        grid-template-columns: 1fr 350px;
         overflow: hidden;
       }
 
-      /* ---- Viewport ---- */
+      /* ---- Viewport Stage ---- */
       #viewport {
         position: relative;
         background: #000;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
       }
-      #tryon-container {
+      #stage-container {
         position: absolute;
         inset: 0;
+      }
+      #vton-remote-video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 4;
+        display: none;
       }
       #camera-placeholder {
         position: absolute;
@@ -60,183 +105,456 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 10px;
-        color: #444;
-        font-size: 0.85rem;
+        gap: 12px;
+        color: #71717a;
+        font-size: 0.88rem;
+        pointer-events: none;
+        z-index: 20;
+      }
+      #camera-placeholder svg { opacity: 0.4; }
+
+      /* Drag and drop overlay */
+      #drop-zone-overlay {
+        position: absolute;
+        inset: 20px;
+        border: 2px dashed #6366f1;
+        border-radius: 14px;
+        background: rgba(99, 102, 241, 0.08);
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: #c7d2fe;
+        font-size: 0.95rem;
+        font-weight: 600;
+        z-index: 50;
+        backdrop-filter: blur(4px);
         pointer-events: none;
       }
-      #camera-placeholder svg { opacity: 0.3; }
 
-      /* ---- Debug panel ---- */
-      #debug-panel {
-        background: #111;
-        border-left: 1px solid #2a2a2a;
-        padding: 14px 12px;
+      /* Smart Framing Guide Silhouette (Anywear UX) */
+      .framing-guide {
+        position: absolute;
+        inset: 0;
+        display: none;
+        pointer-events: none;
+        z-index: 15;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.4s ease;
+      }
+      .silhouette-svg {
+        width: min(320px, 68%);
+        height: auto;
+        opacity: 0.60;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.35));
+      }
+      .guide-stroke {
+        stroke: rgba(192, 132, 252, 0.85);
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        transition: stroke 0.3s ease;
+      }
+      .guide-stroke.dashed {
+        stroke-dasharray: 6 6;
+        stroke-width: 1.5;
+        stroke: rgba(255, 255, 255, 0.45);
+      }
+      .framing-guide.aligned .silhouette-svg {
+        opacity: 0.22;
+        filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.4));
+      }
+      .framing-guide.aligned .guide-stroke {
+        stroke: #10b981;
+      }
+      .framing-badge {
+        margin-top: 12px;
+        background: rgba(18, 18, 24, 0.85);
+        border: 1px solid rgba(168, 85, 247, 0.4);
+        padding: 5px 14px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #e4e4e7;
+        backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+      }
+      .framing-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #a855f7;
+        box-shadow: 0 0 8px #a855f7;
+      }
+      .framing-guide.aligned .framing-badge {
+        border-color: rgba(16, 185, 129, 0.5);
+        color: #6ee7b7;
+      }
+      .framing-guide.aligned .framing-dot {
+        background: #10b981;
+        box-shadow: 0 0 8px #10b981;
+      }
+
+      /* Floating Garment Tray on Bottom of Camera */
+      #tray-overlay {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(18, 18, 22, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(16px);
+        border-radius: 16px;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 30;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      .tray-title {
+        font-size: 0.70rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #a1a1aa;
+        padding-right: 6px;
+        border-right: 1px solid #2e2e38;
+      }
+      .tray-cards {
+        display: flex;
+        gap: 8px;
+      }
+      .preset-card {
+        background: #18181b;
+        border: 2px solid transparent;
+        border-radius: 10px;
+        padding: 6px;
+        cursor: pointer;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        align-items: center;
+        gap: 4px;
+        width: 82px;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .preset-card:hover {
+        background: #27272a;
+        transform: translateY(-2px);
+      }
+      .preset-card.active {
+        border-color: #a855f7;
+        background: #261633;
+        box-shadow: 0 0 16px rgba(168, 85, 247, 0.35);
+      }
+      .preset-img {
+        width: 56px;
+        height: 56px;
+        object-fit: contain;
+        border-radius: 6px;
+        background: #111;
+      }
+      .preset-label {
+        font-size: 0.65rem;
+        font-weight: 600;
+        color: #e4e4e7;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+      }
+
+      /* Drag/upload button in tray */
+      .upload-card-btn {
+        background: #1c1c24;
+        border: 1px dashed #4f46e5;
+        border-radius: 10px;
+        padding: 6px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        width: 82px;
+        height: 82px;
+        color: #a5b4fc;
+        font-size: 0.65rem;
+        font-weight: 600;
+        transition: all 0.15s ease;
+      }
+      .upload-card-btn:hover {
+        background: #282836;
+        border-color: #818cf8;
+      }
+
+      /* ---- Sidebar Panel ---- */
+      #side-panel {
+        background: #111114;
+        border-left: 1px solid #27272a;
+        padding: 16px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
         overflow-y: auto;
       }
       .panel-label {
-        font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.1em; color: #555; margin-bottom: 4px;
+        font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.08em; color: #71717a; margin-bottom: 5px;
       }
       .panel-section { display: flex; flex-direction: column; }
 
       #status-text {
-        font-size: 0.72rem; color: #a3e4a3;
-        background: #0f2010; border: 1px solid #1a4020;
-        border-radius: 5px; padding: 7px 10px;
+        font-size: 0.74rem; color: #a7f3d0;
+        background: #062b1b; border: 1px solid #065f46;
+        border-radius: 6px; padding: 8px 10px;
         font-family: monospace; word-break: break-all; min-height: 44px;
       }
+
+      /* Active garment highlight card */
+      #active-garment-card {
+        background: #18181b;
+        border: 1px solid #27272a;
+        border-radius: 8px;
+        padding: 10px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      #active-garment-thumb {
+        width: 60px;
+        height: 60px;
+        object-fit: contain;
+        background: #09090b;
+        border-radius: 6px;
+        border: 1px solid #27272a;
+      }
+      .active-garment-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .active-garment-name { font-size: 0.85rem; font-weight: 700; color: #fff; }
+      .active-garment-tag { font-size: 0.65rem; color: #c084fc; font-weight: 600; }
+      .active-garment-desc { font-size: 0.68rem; color: #a1a1aa; line-height: 1.3; }
+
+      /* Live Cloud Engine settings box */
+      .cloud-config-box {
+        background: #14141a;
+        border: 1px solid #312e81;
+        border-radius: 8px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .cloud-config-title {
+        font-size: 0.70rem;
+        font-weight: 700;
+        color: #a5b4fc;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .cloud-input {
+        background: #09090b;
+        border: 1px solid #3730a3;
+        border-radius: 6px;
+        padding: 6px 8px;
+        color: #fff;
+        font-size: 0.72rem;
+        font-family: monospace;
+        width: 100%;
+      }
+      .cloud-input:focus { outline: none; border-color: #6366f1; }
 
       /* Metrics row */
       .metrics-row {
         display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
       }
       .metric-box {
-        background: #161616; border: 1px solid #242424;
+        background: #18181b; border: 1px solid #27272a;
         border-radius: 6px; padding: 6px 8px; text-align: center;
       }
       .metric-value {
         font-size: 1.15rem; font-weight: 800;
         font-variant-numeric: tabular-nums;
         color: #60a5fa; font-family: monospace;
-        line-height: 1.1;
       }
-      .metric-label { font-size: 0.55rem; color: #666; margin-top: 2px; text-transform: uppercase; }
-
-      /* Garment selector buttons */
-      #garment-buttons {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .garment-btn {
-        background: #18181b;
-        color: #d1d5db;
-        border: 1px solid #27272a;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 0.75rem;
-        text-align: left;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        transition: all 0.15s ease;
-      }
-      .garment-btn:hover {
-        background: #27272a;
-        color: #fff;
-        border-color: #3b82f6;
-      }
-      .garment-btn.active {
-        background: #1e3a8a;
-        border-color: #3b82f6;
-        color: #93c5fd;
-        font-weight: 600;
-      }
-
-      /* Garment info panel */
-      #garment-info {
-        background: #161616;
-        border: 1px solid #242424;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 0.68rem;
-        font-family: monospace;
-      }
-
-      /* Pose & Fitting state boxes */
-      #pose-state, #fitting-state, #occlusion-state {
-        font-size: 0.72rem; font-weight: 600; color: #555;
-        padding: 5px 8px; background: #161616; border-radius: 4px;
-        border: 1px solid #242424; font-family: monospace;
-      }
+      .metric-label { font-size: 0.55rem; color: #71717a; margin-top: 2px; text-transform: uppercase; }
 
       /* Controls */
       #controls { display: flex; flex-direction: column; gap: 6px; }
       button {
-        padding: 8px 12px; border: none; border-radius: 6px;
+        padding: 9px 14px; border: none; border-radius: 6px;
         font-size: 0.78rem; font-weight: 600; cursor: pointer;
         transition: opacity 0.15s, transform 0.1s;
       }
       button:active { transform: scale(0.97); }
       button:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
-      #btn-start { background: #2563eb; color: #fff; }
-      #btn-stop  { background: #1f1f1f; color: #bbb; border: 1px solid #333; }
+      #btn-start { background: linear-gradient(135deg, #2563eb, #4f46e5); color: #fff; }
+      #btn-stop  { background: #18181b; color: #a1a1aa; border: 1px solid #27272a; }
 
       /* Toggles */
       .toggles-group {
-        display: flex; flex-direction: column; gap: 5px;
-        background: #161616; padding: 8px 10px; border-radius: 6px;
-        border: 1px solid #242424;
+        display: flex; flex-direction: column; gap: 6px;
+        background: #18181b; padding: 8px 10px; border-radius: 6px;
+        border: 1px solid #27272a;
       }
       .toggle-row {
         display: flex; align-items: center; gap: 8px;
-        font-size: 0.72rem; color: #bbb;
+        font-size: 0.72rem; color: #d4d4d8;
       }
-      .toggle-row input[type=checkbox] { accent-color: #3b82f6; cursor: pointer; }
-
-      /* Landmark list */
-      #landmark-list { font-family: monospace; font-size: 0.65rem; }
-      .lm-row {
-        display: grid; grid-template-columns: 85px 1fr;
-        gap: 4px; padding: 2px 0; border-bottom: 1px solid #1a1a1a;
-        align-items: center;
-      }
-      .lm-name { color: #888; }
-      .lm-val  { color: #ccc; text-align: right; }
+      .toggle-row input[type=checkbox] { accent-color: #8b5cf6; cursor: pointer; }
 
       /* Footer */
       footer {
-        background: #0a0a0a; border-top: 1px solid #1e1e1e;
-        padding: 6px 20px; font-size: 0.65rem; color: #444;
+        background: #09090b; border-top: 1px solid #1f1f23;
+        padding: 6px 20px; font-size: 0.65rem; color: #71717a;
         display: flex; justify-content: space-between; flex-shrink: 0;
       }
     </style>
   </head>
   <body>
     <header>
-      <h1>VTrialom Try-On Engine</h1>
-      <span class="badge">Phase 4</span>
-      <span class="badge purple">Real-time Garment Fitting</span>
-      <span class="badge green">Ready</span>
+      <div class="brand-group">
+        <h1>VTrialom</h1>
+        <span class="badge vwear">V-Wear Live AI</span>
+        <span class="badge green">Ready</span>
+      </div>
+
+      <!-- Engine Mode Switcher -->
+      <div class="mode-switcher">
+        <button id="mode-vwear" class="mode-tab active vwear-tab">✦ V-Wear Live AI (Photorealistic)</button>
+        <button id="mode-3d" class="mode-tab">3D WebGL (Skeleton)</button>
+      </div>
     </header>
 
     <main>
-      <!-- Camera + engine output -->
+      <!-- Camera + Try-On Stage -->
       <div id="viewport">
-        <div id="tryon-container"></div>
+        <div id="stage-container">
+          <!-- Try-on Canvas container for video and direct V-Wear garment rendering -->
+          <div id="tryon-container" style="position:absolute;inset:0"></div>
+          <!-- Cloud WebRTC video stream -->
+          <video id="vton-remote-video" autoplay playsinline muted></video>
+        </div>
+
+        <!-- Smart Framing Silhouette Guide (Exact Anywear UX) -->
+        <div id="framing-guide" class="framing-guide">
+          <svg class="silhouette-svg" viewBox="0 0 400 560" fill="none">
+            <!-- Head & Chin Outline -->
+            <ellipse class="guide-stroke" cx="200" cy="110" rx="42" ry="56" />
+            <!-- Neck -->
+            <path class="guide-stroke" d="M185 166 v24 M215 166 v24" />
+            <!-- Shoulders & Upper Body Silhouette -->
+            <path class="guide-stroke" d="M185 190 C145 195, 95 220, 75 275 L60 450 M215 190 C255 195, 305 220, 325 275 L340 450" />
+            <!-- Chest Area Guideline -->
+            <path class="guide-stroke dashed" d="M140 230 h120" />
+          </svg>
+          <div id="framing-badge" class="framing-badge">
+            <span class="framing-dot"></span>
+            <span id="framing-text">Step back to align inside the silhouette</span>
+          </div>
+        </div>
+
         <div id="camera-placeholder">
           <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.361a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
           </svg>
-          <span>Press Start to initialize tracking and live garment fitting</span>
+          <span>Click <strong>Start Try-On</strong> to activate live camera feed</span>
+        </div>
+
+        <!-- Drag & drop overlay zone -->
+        <div id="drop-zone-overlay">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 16v-8m0 0l-3 3m3-3l3 3M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+          </svg>
+          <span>Drop your clothing image to try it on live!</span>
+        </div>
+
+        <!-- V-Wear 4-Garment Tray -->
+        <div id="tray-overlay">
+          <div class="tray-title">V-Wear<br>Presets</div>
+          <div class="tray-cards" id="preset-cards-container">
+            <!-- Populated dynamically: Shirt, Hoodie, Sweatshirt, Highneck -->
+          </div>
+          <label class="upload-card-btn" title="Upload custom garment image">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>Upload</span>
+            <input type="file" id="custom-file-input" accept="image/*" style="display:none" />
+          </label>
         </div>
       </div>
 
-      <!-- Debug panel -->
-      <aside id="debug-panel">
-
+      <!-- Sidebar / Controls -->
+      <aside id="side-panel">
         <div class="panel-section">
-          <div class="panel-label">Engine Status</div>
-          <div id="status-text">Engine state: uninitialised</div>
+          <div class="panel-label">Live Status</div>
+          <div id="status-text">Ready to start try-on</div>
         </div>
 
+        <!-- Active Garment Card -->
         <div class="panel-section">
-          <div class="panel-label">Garment Catalog (Switch live)</div>
-          <div id="garment-buttons"></div>
-        </div>
-
-        <div class="panel-section">
-          <div class="panel-label">Active Garment Metadata</div>
-          <div id="garment-info">
-            <span style="color:#555">No garment loaded yet</span>
+          <div class="panel-label">Active Garment</div>
+          <div id="active-garment-card">
+            <img id="active-garment-thumb" src="/assets/anywear/shirt.png" alt="Garment" />
+            <div class="active-garment-meta">
+              <div class="active-garment-name" id="active-garment-name">Classic Oxford Shirt</div>
+              <div class="active-garment-tag" id="active-garment-tag">Formal &amp; Casual</div>
+              <div class="active-garment-desc" id="active-garment-desc">Tailored woven cotton Oxford shirt with crisp collar.</div>
+            </div>
           </div>
         </div>
 
+        <!-- Real-Time Cloud AI Settings -->
+        <div class="panel-section">
+          <div class="cloud-config-box">
+            <div class="cloud-config-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+              <span>V-Wear Cloud Neural Diffusion (Optional)</span>
+            </div>
+            <div style="font-size:0.65rem;color:#94a3b8">
+              Live WebRTC diffusion streaming at 30 FPS. Enter fal.ai API key to stream direct from GPU cluster, or leave empty for local neural try-on:
+            </div>
+            <div style="display:flex;gap:6px">
+              <input type="password" id="fal-key-input" class="cloud-input" placeholder="fal.ai API key (Optional for Cloud Diffusion)" />
+              <button id="btn-connect-cloud" style="padding:6px 10px;font-size:0.70rem;background:#4f46e5;color:#fff;white-space:nowrap">Connect</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="panel-section">
+          <div class="panel-label">Controls</div>
+          <div id="controls">
+            <button id="btn-start">▶ Start Try-On</button>
+            <button id="btn-stop" disabled>■ Stop Camera</button>
+          </div>
+          <div class="toggles-group" style="margin-top:8px">
+            <div class="toggle-row">
+              <input type="checkbox" id="toggle-mask" />
+              <label for="toggle-mask">Person segmentation mask</label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="toggle-skeleton" />
+              <label for="toggle-skeleton">Pose skeleton</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance -->
         <div class="panel-section">
           <div class="panel-label">Performance (FPS &amp; Latency)</div>
           <div class="metrics-row">
@@ -255,79 +573,18 @@
           </div>
         </div>
 
-        <div class="panel-section">
-          <div class="panel-label">Fitting Real-time Transform</div>
-          <div class="metrics-row">
-            <div class="metric-box">
-              <div class="metric-value" id="fitting-scale" style="color:#a78bfa">–</div>
-              <div class="metric-label">Scale</div>
-            </div>
-            <div class="metric-box">
-              <div class="metric-value" id="fitting-rotation" style="color:#a78bfa">–</div>
-              <div class="metric-label">Rot deg</div>
-            </div>
-            <div class="metric-box">
-              <div class="metric-value" id="fitting-confidence" style="color:#a78bfa">–</div>
-              <div class="metric-label">Confidence</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel-section">
-          <div class="panel-label">Tracking &amp; Occlusion State</div>
-          <div id="pose-state">–</div>
-          <div id="occlusion-state" style="margin-top:4px">Waiting for camera…</div>
-        </div>
-
-        <div class="panel-section">
-          <div class="panel-label">Controls &amp; Overlays</div>
-          <div id="controls">
-            <button id="btn-start">▶ Start Camera</button>
-            <button id="btn-stop" disabled>■ Stop Camera</button>
-          </div>
-          <div class="toggles-group" style="margin-top:6px">
-            <div class="toggle-row">
-              <input type="checkbox" id="toggle-3d" checked />
-              <label for="toggle-3d" style="color:#d8b4fe;font-weight:700">3D Real Garment Fitting (Three.js)</label>
-            </div>
-            <div class="toggle-row">
-              <input type="checkbox" id="toggle-skeleton" checked />
-              <label for="toggle-skeleton">Pose skeleton</label>
-            </div>
-            <div class="toggle-row">
-              <input type="checkbox" id="toggle-occlusion" />
-              <label for="toggle-occlusion">Arm &amp; torso occlusion regions</label>
-            </div>
-            <div class="toggle-row">
-              <input type="checkbox" id="toggle-mask" />
-              <label for="toggle-mask">Person segmentation mask</label>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel-section">
-          <div class="panel-label">Key Landmarks (normalised)</div>
-          <div id="landmark-list">
-            <span style="color:#555;font-size:0.65rem">Start camera to see data</span>
-          </div>
-        </div>
-
-        <div class="panel-section">
-          <div class="panel-label" style="color:#444">Phase 4 Verification Scenarios</div>
-          <div style="font-size:0.65rem;color:#555;line-height:1.7">
-            1. Move left/right → Garment follows body in real-time<br>
-            2. Step forward/backward → Garment scales automatically<br>
-            3. Lean torso left/right → Garment rotates with shoulder line<br>
-            4. Click different garment buttons → Swaps instantly without restarting camera
-          </div>
+        <!-- 3D Legacy Section (Collapsible) -->
+        <div class="panel-section" id="legacy-3d-section" style="display:none">
+          <div class="panel-label">3D WebGL Catalogue</div>
+          <div id="garment-buttons"></div>
         </div>
 
       </aside>
     </main>
 
     <footer>
-      <span>VTrialom Try-On Engine — Phase 4: Real-time Garment Fitting</span>
-      <span>localhost:5173</span>
+      <span>VTrialom — V-Wear Real-Time AI Virtual Try-On</span>
+      <span>Live AI Try-On active</span>
     </footer>
 
     <script type="module" src="/src/main.ts"></script>

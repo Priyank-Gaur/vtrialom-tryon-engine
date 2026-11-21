@@ -1,28 +1,32 @@
 /**
  * src/main.ts
  *
- * Development shell for the VTrialom Try-On Engine — Phase 3.
+ * VTrialom — V-Wear Real-Time AI Virtual Try-On Engine.
  *
- * Capabilities:
- *   - Mounts and runs the TryOnEngine pipeline.
- *   - Draws camera feed (mirrored).
- *   - Draws person segmentation mask overlay.
- *   - Draws arm & torso occlusion analysis with live state indicator.
- *   - Draws pose skeleton overlay.
- *   - Garment Asset Pipeline:
- *     - Dynamic switching between transparent garment assets (T-shirt, streetwear tee, dress shirt).
- *     - Picture-in-picture garment preview displaying normalized anchor points (shoulders, neck, hem, sleeves).
- *     - Zero camera restart during garment switching.
- *   - Real-time performance diagnostics (FPS, Pose latency, Seg latency).
+ * Modes:
+ *   1. V-Wear AI Mode (Default / Featured):
+ *      - Real-time AI garment fitting directly on the live camera stream.
+ *      - 4 Featured Garment Presets:
+ *        * Classic Oxford Button-Down Shirt
+ *        * Streetwear Pullover Hoodie
+ *        * Vintage Crewneck Sweatshirt
+ *        * Ribbed High-Neck / Turtleneck Sweater
+ *      - Universal Drag & Drop / Upload: try on any image from e-commerce stores.
+ *      - Anatomical shoulder, high-neck collar, and sleeve tracking.
+ *   2. 3D WebGL Mode:
+ *      - GPU SkinnedMesh rigging with MediaPipe pose skeleton.
  */
 
 import { VTrialomTryOn } from "./api/TryOnComponent.js";
-import { LANDMARK_INDEX } from "./core/types.js";
 import type { TrackingResult } from "./tracking/PoseTracker.js";
-import type { SegmentationResult, NormalisedPolygon } from "./core/types.js";
+import type { SegmentationResult } from "./core/types.js";
 import { ThreeRenderer } from "./rendering/ThreeRenderer.js";
 import { Garment3DLoader, type Loaded3DGarment } from "./garments/Garment3DLoader.js";
 import { Garment3DFitter } from "./fitting/Garment3DFitter.js";
+import { GarmentSkinnedRigger } from "./fitting/GarmentSkinnedRigger.js";
+import { ANYWEAR_PRESETS, type AnywearGarment } from "./vton/AnywearPresets.js";
+import { VWearRenderer } from "./vton/VWearRenderer.js";
+import { DecartAnywearClient } from "./vton/DecartAnywearClient.js";
 
 // Skeleton connections
 const POSE_CONNECTIONS: [number, number][] = [
@@ -38,98 +42,99 @@ const POSE_CONNECTIONS: [number, number][] = [
   [24, 26], [26, 28],
 ];
 
-const KEY_LANDMARKS = new Set<number>([
-  LANDMARK_INDEX.LEFT_SHOULDER,
-  LANDMARK_INDEX.RIGHT_SHOULDER,
-  LANDMARK_INDEX.LEFT_ELBOW,
-  LANDMARK_INDEX.RIGHT_ELBOW,
-  LANDMARK_INDEX.LEFT_WRIST,
-  LANDMARK_INDEX.RIGHT_WRIST,
-  LANDMARK_INDEX.LEFT_HIP,
-  LANDMARK_INDEX.RIGHT_HIP,
-]);
-
-// 3D Garment catalog
-interface GarmentItem {
-  id: string;
-  name: string;
-  category: string;
-  metadataUrl: string;
-  modelUrl: string;
-}
-
-const CATALOG: GarmentItem[] = [
+const CATALOG_3D = [
   {
     id: "tshirt-basic",
-    name: "3D Classic Crewneck Tee (GLB)",
-    category: "Basic short-sleeve T-shirt",
-    metadataUrl: "/assets/garments/tshirt-basic/metadata.json",
+    name: "Classic Crewneck Tee",
     modelUrl: "/assets/garments/tshirt-basic/model.glb",
+    metadataUrl: "/assets/garments/tshirt-basic/metadata.json",
   },
   {
     id: "casual-shirt",
-    name: "3D Oxford Button-Down Shirt (GLB)",
-    category: "Casual button-down shirt",
-    metadataUrl: "/assets/garments/casual-shirt/metadata.json",
+    name: "Classic Oxford Shirt",
     modelUrl: "/assets/garments/casual-shirt/model.glb",
+    metadataUrl: "/assets/garments/casual-shirt/metadata.json",
   },
   {
     id: "sweatshirt",
-    name: "3D Streetwear Hoodie (GLB)",
-    category: "Sweatshirt / Hoodie",
-    metadataUrl: "/assets/garments/sweatshirt/metadata.json",
+    name: "Streetwear Hoodie",
     modelUrl: "/assets/garments/sweatshirt/model.glb",
+    metadataUrl: "/assets/garments/sweatshirt/metadata.json",
   },
   {
     id: "lightweight-jacket",
-    name: "3D Lightweight Sport Jacket (GLB)",
-    category: "Lightweight jacket",
-    metadataUrl: "/assets/garments/lightweight-jacket/metadata.json",
+    name: "Lightweight Jacket",
     modelUrl: "/assets/garments/lightweight-jacket/model.glb",
+    metadataUrl: "/assets/garments/lightweight-jacket/metadata.json",
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Bootstrap
-// ---------------------------------------------------------------------------
-
 async function main() {
-  // ---- DOM refs ----
   const container = document.getElementById("tryon-container")!;
   const statusEl = document.getElementById("status-text")!;
   const fpsEl = document.getElementById("fps-counter")!;
   const trackingLatencyEl = document.getElementById("tracking-latency")!;
   const segLatencyEl = document.getElementById("seg-latency")!;
-  const poseStateEl = document.getElementById("pose-state")!;
-  const occlusionStateEl = document.getElementById("occlusion-state")!;
-  const garmentInfoEl = document.getElementById("garment-info")!;
-  const landmarkListEl = document.getElementById("landmark-list")!;
   const startBtn = document.getElementById("btn-start") as HTMLButtonElement;
   const stopBtn = document.getElementById("btn-stop") as HTMLButtonElement;
 
   const skeletonToggle = document.getElementById("toggle-skeleton") as HTMLInputElement;
   const maskToggle = document.getElementById("toggle-mask") as HTMLInputElement;
-  const occlusionToggle = document.getElementById("toggle-occlusion") as HTMLInputElement;
-  const toggle3D = document.getElementById("toggle-3d") as HTMLInputElement;
   const placeholder = document.getElementById("camera-placeholder")!;
 
-  const fittingScaleEl = document.getElementById("fitting-scale")!;
-  const fittingRotEl = document.getElementById("fitting-rotation")!;
-  const fittingConfEl = document.getElementById("fitting-confidence")!;
+  const modeVWearBtn = document.getElementById("mode-vwear") as HTMLButtonElement;
+  const mode3DBtn = document.getElementById("mode-3d") as HTMLButtonElement;
+  const trayOverlay = document.getElementById("tray-overlay")!;
+  const presetCardsContainer = document.getElementById("preset-cards-container")!;
+  const customFileInput = document.getElementById("custom-file-input") as HTMLInputElement;
+  const dropZoneOverlay = document.getElementById("drop-zone-overlay")!;
+  const falKeyInput = document.getElementById("fal-key-input") as HTMLInputElement;
+  const framingGuide = document.getElementById("framing-guide")!;
+  const framingText = document.getElementById("framing-text")!;
 
+  const activeThumb = document.getElementById("active-garment-thumb") as HTMLImageElement;
+  const activeName = document.getElementById("active-garment-name")!;
+  const activeTag = document.getElementById("active-garment-tag")!;
+  const activeDesc = document.getElementById("active-garment-desc")!;
+  const legacy3DSection = document.getElementById("legacy-3d-section")!;
   const garmentButtonsContainer = document.getElementById("garment-buttons")!;
 
-  // 3D Three.js rendering subsystem
+  // 1. V-Wear Direct Canvas Renderer
+  const vwearRenderer = new VWearRenderer();
+
+  // 2. Cloud AI WebRTC Client (Optional)
+  const decartClient = new DecartAnywearClient({
+    onStatus: (msg, isErr) => {
+      statusEl.textContent = msg;
+      statusEl.style.color = isErr ? "#f87171" : "#a7f3d0";
+    },
+    onStream: (stream) => {
+      const vtonVideo = document.getElementById("vton-remote-video") as HTMLVideoElement;
+      if (vtonVideo) {
+        vtonVideo.srcObject = stream;
+        vtonVideo.style.display = "block";
+      }
+    },
+  });
+
+  // 3. 3D WebGL subsystem (for 3D mode)
   const threeRenderer = new ThreeRenderer();
+  threeRenderer.domElement.style.display = "none";
   container.appendChild(threeRenderer.domElement);
 
   const loader3D = new Garment3DLoader();
   const fitter3D = new Garment3DFitter();
+  const skinnedRigger = new GarmentSkinnedRigger();
   let active3DGarment: Loaded3DGarment | null = null;
 
-  // Offscreen canvas for fast mask rendering
-  const maskCanvas = document.createElement("canvas");
-  const maskCtx = maskCanvas.getContext("2d");
+  // State
+  let engineMode: "vwear" | "3d" = "vwear";
+  let activeGarment: AnywearGarment = ANYWEAR_PRESETS[0]!;
+
+  // Eagerly preload all 4 V-Wear preset images immediately
+  ANYWEAR_PRESETS.forEach((preset) => {
+    vwearRenderer.preloadImage(preset.imageUrl);
+  });
 
   // ---- Engine instance ----
   const engine = new VTrialomTryOn({
@@ -141,11 +146,10 @@ async function main() {
   let latestTracking: TrackingResult | null = null;
   let latestSegmentation: SegmentationResult | null = null;
 
-  // ---- State change handlers ----
+  // State handlers
   container.addEventListener("vtrialom:statechange", (e) => {
     const { current } = (e as CustomEvent).detail;
-    statusEl.textContent = `Engine state: ${current}`;
-    statusEl.style.color = "";
+    statusEl.textContent = `Engine: ${current}`;
     updateButtonState(current);
   });
 
@@ -163,38 +167,172 @@ async function main() {
     latestSegmentation = (e as CustomEvent<SegmentationResult>).detail;
   });
 
-  // ---- Garment Selector Buttons ----
-  CATALOG.forEach((item, index) => {
+  // Update active garment UI metadata
+  function updateActiveGarmentUI(garment: AnywearGarment) {
+    activeThumb.src = garment.imageUrl;
+    activeName.textContent = garment.name;
+    activeTag.textContent = garment.tag;
+    activeDesc.textContent = garment.description;
+  }
+
+  // ---- Render the 4 V-Wear Featured Presets in Tray ----
+  function renderVWearCards() {
+    presetCardsContainer.innerHTML = "";
+    ANYWEAR_PRESETS.forEach((preset) => {
+      const card = document.createElement("div");
+      card.className = "preset-card" + (preset.id === activeGarment.id ? " active" : "");
+      card.id = `preset-${preset.id}`;
+      card.innerHTML = `
+        <img class="preset-img" src="${preset.thumbnailUrl}" alt="${preset.name}" />
+        <span class="preset-label">${preset.name}</span>
+      `;
+
+      card.addEventListener("click", () => {
+        document.querySelectorAll(".preset-card").forEach((c) => c.classList.remove("active"));
+        card.classList.add("active");
+        activeGarment = preset;
+        vwearRenderer.preloadImage(preset.imageUrl);
+        updateActiveGarmentUI(preset);
+        statusEl.textContent = `Wearing: ${preset.name}`;
+        statusEl.style.color = "#a7f3d0";
+
+        // Notify cloud stream if connected
+        decartClient.setGarment({
+          name: preset.name,
+          imageUrl: preset.imageUrl,
+          description: preset.prompt,
+        });
+      });
+
+      presetCardsContainer.appendChild(card);
+    });
+  }
+
+  renderVWearCards();
+  updateActiveGarmentUI(activeGarment);
+
+  // ---- Drag & Drop Any Product Image ----
+  const viewport = document.getElementById("viewport")!;
+
+  viewport.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZoneOverlay.style.display = "flex";
+  });
+
+  viewport.addEventListener("dragleave", (e) => {
+    if (e.target === dropZoneOverlay) {
+      dropZoneOverlay.style.display = "none";
+    }
+  });
+
+  viewport.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZoneOverlay.style.display = "none";
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file && file.type.startsWith("image/")) {
+        loadCustomImage(file);
+      }
+    }
+  });
+
+  customFileInput.addEventListener("change", (e) => {
+    const files = (e.target as HTMLInputElement).files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file) {
+        loadCustomImage(file);
+      }
+    }
+  });
+
+  function loadCustomImage(file: File) {
+    const url = URL.createObjectURL(file);
+    const customGarment: AnywearGarment = {
+      id: `custom-${Date.now()}`,
+      name: file.name.replace(/\.[^/.]+$/, ""),
+      category: "shirt",
+      tag: "Custom Upload",
+      description: "User-imported e-commerce apparel asset.",
+      imageUrl: url,
+      thumbnailUrl: url,
+      prompt: `Substitute current upper-body clothing with ${file.name}`,
+      fitting: {
+        collarHeight: 0.05,
+        shoulderFit: "relaxed",
+        chestFitRatio: 1.08,
+        torsoLengthRatio: 1.05,
+        sleeveLength: "long",
+      },
+    };
+
+    activeGarment = customGarment;
+    vwearRenderer.preloadImage(url);
+    updateActiveGarmentUI(customGarment);
+    statusEl.textContent = `Uploaded custom apparel: ${customGarment.name}`;
+  }
+
+  // ---- Mode Switcher: V-Wear AI vs 3D WebGL ----
+  modeVWearBtn.addEventListener("click", () => {
+    engineMode = "vwear";
+    modeVWearBtn.classList.add("active", "vwear-tab");
+    mode3DBtn.classList.remove("active");
+    trayOverlay.style.display = "flex";
+    threeRenderer.setGarmentMesh(null);
+    threeRenderer.domElement.style.display = "none";
+    legacy3DSection.style.display = "none";
+    statusEl.textContent = "Switched to V-Wear AI Try-On Mode";
+  });
+
+  mode3DBtn.addEventListener("click", async () => {
+    engineMode = "3d";
+    mode3DBtn.classList.add("active");
+    modeVWearBtn.classList.remove("active", "vwear-tab");
+    trayOverlay.style.display = "none";
+    legacy3DSection.style.display = "block";
+
+    // Load initial 3D model if needed
+    if (!active3DGarment) {
+      const defaultItem = CATALOG_3D[0]!;
+      const loaded = await loader3D.loadGarment({
+        id: defaultItem.id,
+        metadataUrl: defaultItem.metadataUrl,
+        modelUrl: defaultItem.modelUrl,
+      });
+      skinnedRigger.ensureRigged(loaded);
+      active3DGarment = loaded;
+      threeRenderer.setGarmentMesh(loaded.model);
+    } else {
+      threeRenderer.setGarmentMesh(active3DGarment.model);
+    }
+    threeRenderer.domElement.style.display = "block";
+    statusEl.textContent = "Switched to 3D WebGL Mode";
+  });
+
+  // ---- 3D Catalogue Buttons ----
+  CATALOG_3D.forEach((item, index) => {
     const btn = document.createElement("button");
     btn.className = "garment-btn" + (index === 0 ? " active" : "");
-    btn.id = `garment-${item.id}`;
     btn.textContent = item.name;
-
     btn.addEventListener("click", async () => {
       document.querySelectorAll(".garment-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-
       try {
-        statusEl.textContent = `Loading 3D asset: ${item.name}…`;
-        // Detach previous mesh immediately
         threeRenderer.setGarmentMesh(null);
-
         const loaded3D = await loader3D.loadGarment({
           id: item.id,
           metadataUrl: item.metadataUrl,
           modelUrl: item.modelUrl,
         });
+        skinnedRigger.ensureRigged(loaded3D);
         active3DGarment = loaded3D;
         threeRenderer.setGarmentMesh(loaded3D.model);
-        update3DGarmentUI(loaded3D, garmentInfoEl);
         statusEl.textContent = `Wearing: ${loaded3D.metadata.name}`;
       } catch (err) {
-        console.error("Failed to load 3D garment:", err);
-        statusEl.textContent = `Garment load failed: ${(err as Error).message}`;
-        statusEl.style.color = "#ff4444";
+        statusEl.textContent = `3D load error: ${(err as Error).message}`;
       }
     });
-
     garmentButtonsContainer.appendChild(btn);
   });
 
@@ -214,54 +352,71 @@ async function main() {
       ctx.clearRect(0, 0, w, h);
 
       if (video && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        // 1. Draw mirrored webcam frame
+        const hasSeg = !!(latestSegmentation?.mask);
+
+        // 1. ALWAYS draw the mirrored webcam video as the base layer
         ctx.save();
         ctx.scale(-1, 1);
         ctx.drawImage(video, -w, 0, w, h);
 
-        // 2. Draw segmentation mask overlay (optional)
-        if (maskToggle.checked && latestSegmentation?.mask && maskCtx) {
-          drawSegmentationMask(ctx, maskCanvas, maskCtx, latestSegmentation.mask, w, h);
+        // 2. Optional segmentation mask debug overlay
+        if (maskToggle.checked && latestSegmentation?.mask) {
+          drawSegmentationMask(ctx, latestSegmentation.mask, w, h);
         }
         ctx.restore();
 
-        // 2. 3D Real Garment Fitting & Three.js WebGL rendering
-        threeRenderer.setSize(w, h);
-        if (toggle3D.checked && active3DGarment && latestTracking?.bodyGeometry) {
-          const fit3D = fitter3D.fit(latestTracking.bodyGeometry, active3DGarment, threeRenderer.camera);
-          threeRenderer.render(latestTracking.bodyGeometry);
-
-          // Reflect 3D fitting metrics in UI
-          fittingScaleEl.textContent = `${(fit3D.scale.x * 100).toFixed(0)}%`;
-          const deg = Math.round((fit3D.rotation.z * 180) / Math.PI);
-          fittingRotEl.textContent = `${deg}°`;
-          fittingConfEl.textContent = fit3D.confident ? "3D Fitted" : "Searching";
-          fittingConfEl.style.color = fit3D.confident ? "#d8b4fe" : "#f59e0b";
+        // 3. Render according to active mode
+        if (engineMode === "vwear") {
+          // V-Wear AI True Try-On Mode:
+          // With segmentation: inverse compositing — garment replaces the shirt,
+          //   user's head/arms naturally emerge from inside the clothing.
+          // Without segmentation: anatomical overlay with head restoration.
+          if (latestTracking?.bodyGeometry) {
+            vwearRenderer.drawGarment(ctx, activeGarment, latestTracking.bodyGeometry, w, h, video, hasSeg ? latestSegmentation : null);
+          }
         } else {
-          threeRenderer.clear();
+          // 3D WebGL Mode
+          threeRenderer.setSize(w, h);
+          if (active3DGarment && latestTracking?.bodyGeometry) {
+            skinnedRigger.updateArmature(active3DGarment, latestTracking.bodyGeometry);
+            fitter3D.fit(latestTracking.bodyGeometry, active3DGarment, threeRenderer.camera);
+            threeRenderer.render(latestTracking.bodyGeometry);
+          } else {
+            threeRenderer.clear();
+          }
         }
 
-        // 3. Draw Occlusion polygons & analysis
-        if (occlusionToggle.checked && latestSegmentation?.occlusion) {
-          drawOcclusionRegions(ctx, latestSegmentation.occlusion, w, h);
-        }
-
-        // 4. Draw Skeleton overlay
+        // 4. Draw Skeleton overlay if enabled
         if (skeletonToggle.checked && latestTracking?.poseDetected) {
           drawSkeleton(ctx, latestTracking, w, h);
         }
 
-        // 7. Update Diagnostics & Fitting UI
+        // 5. Smart Framing Silhouette Guidance (Anywear UX)
+        if (latestTracking?.bodyGeometry) {
+          const bg = latestTracking.bodyGeometry;
+          if (bg.shoulderWidth >= 0.20 && bg.shoulderWidth <= 0.46 && bg.shoulderMidpoint.y >= 0.24 && bg.shoulderMidpoint.y <= 0.54) {
+            framingGuide.classList.add("aligned");
+            framingText.textContent = `✓ Aligned — Wearing: ${activeGarment.name}`;
+          } else if (bg.shoulderWidth > 0.46) {
+            framingGuide.classList.remove("aligned");
+            framingText.textContent = "Step back slightly for optimal fit";
+          } else if (bg.shoulderWidth < 0.20) {
+            framingGuide.classList.remove("aligned");
+            framingText.textContent = "Step forward a bit";
+          } else {
+            framingGuide.classList.remove("aligned");
+            framingText.textContent = "Align inside the silhouette";
+          }
+        } else {
+          framingGuide.classList.remove("aligned");
+          framingText.textContent = "Step into frame to align";
+        }
+
+        // 6. Diagnostics
         const diag = engine.diagnostics;
         fpsEl.textContent = `${diag.fps} FPS`;
-        trackingLatencyEl.textContent = `${Math.round(diag.poseInferenceLatencyMs)} ms`;
-        segLatencyEl.textContent = `${Math.round(diag.segmentationLatencyMs)} ms`;
-
-        poseStateEl.textContent = diag.poseDetected ? "✓ Pose active" : "✗ No pose";
-        poseStateEl.style.color = diag.poseDetected ? "#6ed86e" : "#ff8844";
-
-        updateOcclusionUI(latestSegmentation, occlusionStateEl);
-        updateLandmarkList(latestTracking);
+        trackingLatencyEl.textContent = `${diag.poseInferenceLatencyMs}ms`;
+        segLatencyEl.textContent = `${diag.segmentationLatencyMs}ms`;
       }
 
       drawLoopId = requestAnimationFrame(draw);
@@ -275,68 +430,63 @@ async function main() {
       cancelAnimationFrame(drawLoopId);
       drawLoopId = null;
     }
-    const ctx = engine.canvas.getContext("2d");
-    ctx?.clearRect(0, 0, engine.canvas.width, engine.canvas.height);
-
-    // Completely clear and hide 3D canvas on camera stop
     threeRenderer.setGarmentMesh(null);
     threeRenderer.clear();
-
-    fpsEl.textContent = "– FPS";
-    trackingLatencyEl.textContent = "– ms";
-    segLatencyEl.textContent = "– ms";
-    fittingScaleEl.textContent = "–";
-    fittingRotEl.textContent = "–";
-    fittingConfEl.textContent = "–";
-    poseStateEl.textContent = "–";
-    occlusionStateEl.textContent = "–";
   }
 
-  // ---- Start / Stop Handlers ----
+  // ---- Camera Start / Stop ----
   startBtn.addEventListener("click", async () => {
     try {
       if (engine.state === "uninitialised") {
-        statusEl.textContent = "Loading MediaPipe models & initializing engine…";
+        statusEl.textContent = "Initializing tracking pipeline…";
         await engine.initialize();
       }
-
-      // Preload initial 3D garment
-      if (!active3DGarment) {
-        const defaultItem = CATALOG[0];
-        statusEl.textContent = `Loading 3D asset: ${defaultItem.name}…`;
-        active3DGarment = await loader3D.loadGarment({
-          id: defaultItem.id,
-          metadataUrl: defaultItem.metadataUrl,
-          modelUrl: defaultItem.modelUrl,
-        });
-        threeRenderer.setGarmentMesh(active3DGarment.model);
-        update3DGarmentUI(active3DGarment, garmentInfoEl);
-      } else {
-        threeRenderer.setGarmentMesh(active3DGarment.model);
-      }
-
       statusEl.textContent = "Starting camera…";
       await engine.startCamera();
       placeholder.style.display = "none";
+      framingGuide.style.display = "flex";
       startDrawLoop();
-      statusEl.textContent = "Running — Real-time 3D Garment Try-On Active";
+
+      // If API key is present, establish cloud WebRTC connection
+      const falKey = falKeyInput.value.trim();
+      const localStream = engine.videoElement?.srcObject as MediaStream;
+      if (falKey && localStream) {
+        decartClient.connect(localStream, falKey);
+      } else {
+        statusEl.textContent = `V-Wear Live AI Active — Wearing: ${activeGarment.name}`;
+        statusEl.style.color = "#a7f3d0";
+      }
     } catch (err) {
-      console.error("[demo] start failed:", err);
       statusEl.textContent = `Start failed: ${(err as Error).message}`;
       statusEl.style.color = "#ff4444";
     }
   });
 
+  const connectCloudBtn = document.getElementById("btn-connect-cloud") as HTMLButtonElement | null;
+  connectCloudBtn?.addEventListener("click", () => {
+    const falKey = falKeyInput.value.trim();
+    if (!falKey) {
+      statusEl.textContent = "Please enter your fal.ai API key to connect cloud diffusion";
+      statusEl.style.color = "#f87171";
+      return;
+    }
+    const localStream = engine.videoElement?.srcObject as MediaStream;
+    if (!localStream) {
+      statusEl.textContent = "Please start the camera first to stream to Decart Lucy AI";
+      statusEl.style.color = "#fbbf24";
+      return;
+    }
+    decartClient.connect(localStream, falKey);
+  });
+
   stopBtn.addEventListener("click", async () => {
     stopDrawLoop();
+    decartClient.disconnect();
     await engine.stopCamera();
     placeholder.style.display = "";
+    framingGuide.style.display = "none";
     latestTracking = null;
     latestSegmentation = null;
-    active3DGarment = null;
-    threeRenderer.setGarmentMesh(null);
-    threeRenderer.clear();
-    landmarkListEl.innerHTML = "";
     statusEl.textContent = "Camera stopped";
   });
 
@@ -346,252 +496,59 @@ async function main() {
   }
 
   updateButtonState(engine.state);
-  statusEl.textContent = `Engine state: ${engine.state}`;
+
+  // Pre-initialize engine in background so models are ready immediately
+  engine.initialize().then(() => {
+    statusEl.textContent = "V-Wear ready — Click 'Start Try-On'";
+  }).catch((err) => {
+    console.warn("Pre-initialization deferred:", err);
+  });
 }
 
-// ---------------------------------------------------------------------------
-// Rendering Functions
-// ---------------------------------------------------------------------------
+// ---- Helpers ----
 
 function drawSegmentationMask(
   ctx: CanvasRenderingContext2D,
-  maskCanvas: HTMLCanvasElement,
-  maskCtx: CanvasRenderingContext2D,
-  mask: { data: Float32Array; width: number; height: number },
+  _mask: { data: Float32Array; width: number; height: number },
   destW: number,
   destH: number
 ): void {
-  const mw = mask.width;
-  const mh = mask.height;
-
-  if (maskCanvas.width !== mw || maskCanvas.height !== mh) {
-    maskCanvas.width = mw;
-    maskCanvas.height = mh;
-  }
-
-  const imgData = maskCtx.createImageData(mw, mh);
-  const data = imgData.data;
-  const maskData = mask.data;
-  const len = mw * mh;
-
-  for (let i = 0; i < len; i++) {
-    const confidence = maskData[i];
-    const alpha = Math.round(confidence * 120);
-    const idx = i * 4;
-    data[idx] = 16;
-    data[idx + 1] = 185;
-    data[idx + 2] = 129;
-    data[idx + 3] = alpha;
-  }
-
-  maskCtx.putImageData(imgData, 0, 0);
-  ctx.drawImage(maskCanvas, -destW, 0, destW, destH);
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "#8b5cf6";
+  ctx.fillRect(-destW, 0, destW, destH);
+  ctx.restore();
 }
 
-function drawOcclusionRegions(
-  ctx: CanvasRenderingContext2D,
-  occlusion: {
-    isLeftArmOccludingTorso: boolean;
-    isRightArmOccludingTorso: boolean;
-    isLeftHandOverTorso: boolean;
-    isRightHandOverTorso: boolean;
-    torsoPolygon: NormalisedPolygon;
-    leftArmPolygon: NormalisedPolygon;
-    rightArmPolygon: NormalisedPolygon;
-  },
-  w: number,
-  h: number
-): void {
-  const mx = (x: number) => (1 - x) * w;
-  const my = (y: number) => y * h;
-
-  if (occlusion.torsoPolygon.length >= 3) {
-    ctx.save();
-    ctx.strokeStyle = "rgba(56, 189, 248, 0.7)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
-    ctx.fillStyle = "rgba(56, 189, 248, 0.08)";
-
-    ctx.beginPath();
-    ctx.moveTo(mx(occlusion.torsoPolygon[0].x), my(occlusion.torsoPolygon[0].y));
-    for (let i = 1; i < occlusion.torsoPolygon.length; i++) {
-      ctx.lineTo(mx(occlusion.torsoPolygon[i].x), my(occlusion.torsoPolygon[i].y));
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  const drawArm = (poly: NormalisedPolygon, isOccluding: boolean, label: string) => {
-    if (poly.length < 3) return;
-
-    ctx.save();
-    if (isOccluding) {
-      ctx.strokeStyle = "rgba(245, 158, 11, 0.95)";
-      ctx.fillStyle = "rgba(245, 158, 11, 0.28)";
-      ctx.lineWidth = 2.5;
-    } else {
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.5)";
-      ctx.fillStyle = "rgba(148, 163, 184, 0.08)";
-      ctx.lineWidth = 1.5;
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(mx(poly[0].x), my(poly[0].y));
-    for (let i = 1; i < poly.length; i++) {
-      ctx.lineTo(mx(poly[i].x), my(poly[i].y));
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    if (isOccluding) {
-      const midX = mx(poly[1].x);
-      const midY = my(poly[1].y);
-      ctx.font = "bold 11px monospace";
-      ctx.fillStyle = "#f59e0b";
-      ctx.fillText(`⚡ ${label} OCCLUDING`, midX - 45, midY - 8);
-    }
-    ctx.restore();
-  };
-
-  drawArm(occlusion.leftArmPolygon, occlusion.isLeftArmOccludingTorso, "LEFT ARM");
-  drawArm(occlusion.rightArmPolygon, occlusion.isRightArmOccludingTorso, "RIGHT ARM");
-}
-
-function drawSkeleton(
-  ctx: CanvasRenderingContext2D,
-  tracking: TrackingResult,
-  w: number,
-  h: number
-): void {
+function drawSkeleton(ctx: CanvasRenderingContext2D, tracking: TrackingResult, w: number, h: number): void {
   const lms = tracking.landmarks;
-  if (lms.length === 0) return;
+  if (!lms || lms.length === 0) return;
 
-  const mx = (x: number) => (1 - x) * w;
-  const my = (y: number) => y * h;
+  ctx.save();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = "rgba(168, 85, 247, 0.75)";
 
-  ctx.strokeStyle = "rgba(100, 200, 255, 0.85)";
-  ctx.lineWidth = 2;
-  ctx.lineJoin = "round";
-
-  for (const [a, b] of POSE_CONNECTIONS) {
-    if (a >= lms.length || b >= lms.length) continue;
-    const la = lms[a];
-    const lb = lms[b];
-    if ((la.visibility ?? 1) < 0.3 || (lb.visibility ?? 1) < 0.3) continue;
-
-    ctx.beginPath();
-    ctx.moveTo(mx(la.x), my(la.y));
-    ctx.lineTo(mx(lb.x), my(lb.y));
-    ctx.stroke();
+  for (const [startIdx, endIdx] of POSE_CONNECTIONS) {
+    const p1 = lms[startIdx];
+    const p2 = lms[endIdx];
+    if (p1 && p2 && (p1.visibility ?? 1) > 0.4 && (p2.visibility ?? 1) > 0.4) {
+      ctx.beginPath();
+      ctx.moveTo(p1.x * w, p1.y * h);
+      ctx.lineTo(p2.x * w, p2.y * h);
+      ctx.stroke();
+    }
   }
 
   for (let i = 0; i < lms.length; i++) {
     const lm = lms[i];
-    if ((lm.visibility ?? 1) < 0.3) continue;
-
-    const isKey = KEY_LANDMARKS.has(i);
-    ctx.beginPath();
-    ctx.arc(mx(lm.x), my(lm.y), isKey ? 5 : 3, 0, Math.PI * 2);
-    ctx.fillStyle = isKey ? "#ffdd44" : "rgba(100, 200, 255, 0.7)";
-    ctx.fill();
+    if (lm && (lm.visibility ?? 1) > 0.4) {
+      ctx.fillStyle = i === 11 || i === 12 ? "#ec4899" : "#60a5fa";
+      ctx.beginPath();
+      ctx.arc(lm.x * w, lm.y * h, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
-}
-
-// ---------------------------------------------------------------------------
-// Diagnostics Panel Updates
-// ---------------------------------------------------------------------------
-
-function update3DGarmentUI(garment: Loaded3DGarment | null, el: HTMLElement): void {
-  if (!garment) {
-    el.innerHTML = '<span style="color:#555">No 3D garment loaded</span>';
-    return;
-  }
-
-  const meta = garment.metadata;
-  el.innerHTML = `
-    <div class="lm-row"><span class="lm-name">Item (3D)</span><span class="lm-val" style="color:#d8b4fe;font-weight:600">${meta.name}</span></div>
-    <div class="lm-row"><span class="lm-name">Category</span><span class="lm-val">${meta.category}</span></div>
-    <div class="lm-row"><span class="lm-name">Format</span><span class="lm-val">GLB Mesh (PBR)</span></div>
-    <div class="lm-row"><span class="lm-name">Mesh Size</span><span class="lm-val">${(garment.dimensions.x * 100).toFixed(0)}×${(garment.dimensions.y * 100).toFixed(0)}×${(garment.dimensions.z * 100).toFixed(0)} cm</span></div>
-    <div class="lm-row"><span class="lm-name">Span</span><span class="lm-val">${(garment.shoulderSpan * 100).toFixed(1)} cm</span></div>
-    <div class="lm-row"><span class="lm-name">Licence</span><span class="lm-val" style="color:#6ed86e">${meta.source?.license || "MIT (Commercial Ready)"}</span></div>
-  `;
-}
-
-function updateOcclusionUI(seg: SegmentationResult | null, el: HTMLElement): void {
-  if (!seg?.occlusion) {
-    el.innerHTML = '<span style="color:#555">Waiting for pose…</span>';
-    return;
-  }
-
-  const occ = seg.occlusion;
-  const leftTag = occ.isLeftArmOccludingTorso
-    ? '<span style="color:#f59e0b;font-weight:700">OCCLUDING (' + Math.round(occ.leftArmOverlapRatio * 100) + '%)</span>'
-    : '<span style="color:#6ee7b7">Clear</span>';
-
-  const rightTag = occ.isRightArmOccludingTorso
-    ? '<span style="color:#f59e0b;font-weight:700">OCCLUDING (' + Math.round(occ.rightArmOverlapRatio * 100) + '%)</span>'
-    : '<span style="color:#6ee7b7">Clear</span>';
-
-  el.innerHTML = `
-    <div class="lm-row"><span class="lm-name">Left Arm</span><span class="lm-val">${leftTag}</span></div>
-    <div class="lm-row"><span class="lm-name">Right Arm</span><span class="lm-val">${rightTag}</span></div>
-    <div class="lm-row"><span class="lm-name">Hand On Torso</span><span class="lm-val">${
-      (occ.isLeftHandOverTorso ? "L " : "") +
-      (occ.isRightHandOverTorso ? "R" : "") || "None"
-    }</span></div>
-  `;
-}
-
-const LANDMARK_NAMES: Record<number, string> = {
-  [LANDMARK_INDEX.LEFT_SHOULDER]: "L Shoulder",
-  [LANDMARK_INDEX.RIGHT_SHOULDER]: "R Shoulder",
-  [LANDMARK_INDEX.LEFT_ELBOW]: "L Elbow",
-  [LANDMARK_INDEX.RIGHT_ELBOW]: "R Elbow",
-  [LANDMARK_INDEX.LEFT_WRIST]: "L Wrist",
-  [LANDMARK_INDEX.RIGHT_WRIST]: "R Wrist",
-  [LANDMARK_INDEX.LEFT_HIP]: "L Hip",
-  [LANDMARK_INDEX.RIGHT_HIP]: "R Hip",
-};
-
-function updateLandmarkList(tracking: TrackingResult | null): void {
-  const el = document.getElementById("landmark-list")!;
-  if (!tracking?.poseDetected) {
-    el.innerHTML = '<span style="color:#555">No pose detected</span>';
-    return;
-  }
-
-  const rows = Object.entries(LANDMARK_NAMES)
-    .map(([idx, name]) => {
-      const lm = tracking.landmarks[Number(idx)];
-      if (!lm) return "";
-      return `<div class="lm-row">
-        <span class="lm-name">${name}</span>
-        <span class="lm-val">${lm.x.toFixed(3)}, ${lm.y.toFixed(3)} (${((lm.visibility ?? 1) * 100).toFixed(0)}%)</span>
-      </div>`;
-    })
-    .join("");
-
-  const geo = tracking.bodyGeometry;
-  const geoHtml = geo
-    ? `<div class="lm-row" style="margin-top:6px;border-top:1px solid #2a2a2a;padding-top:6px">
-        <span class="lm-name">Shoulder W</span>
-        <span class="lm-val">${(geo.shoulderWidth * 100).toFixed(1)}%</span>
-      </div>
-      <div class="lm-row">
-        <span class="lm-name">Torso H</span>
-        <span class="lm-val">${(geo.torsoHeight * 100).toFixed(1)}%</span>
-      </div>
-      <div class="lm-row">
-        <span class="lm-name">Rotation</span>
-        <span class="lm-val">${((geo.torsoRotation * 180) / Math.PI).toFixed(1)}°</span>
-      </div>`
-    : "";
-
-  el.innerHTML = rows + geoHtml;
+  ctx.restore();
 }
 
 main().catch(console.error);

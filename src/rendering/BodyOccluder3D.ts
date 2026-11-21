@@ -204,50 +204,31 @@ export class BodyOccluder3D {
     this._torsoMesh.position.set(torsoCenter.x, torsoCenter.y, torsoCenter.z - 0.025);
     this._torsoMesh.rotation.set(0, 0, -body.torsoRotation);
 
-    // D. Arm Occluders: Left & Right Upper Arm and Forearm
-    const armRadius = Math.max(shoulderSpanWorld * 0.12, 0.035);
+    // D. Forearm Occluders: Left & Right Elbow to Wrist
+    // Notice: We deliberately do NOT occlude the upper arm (shoulder to elbow)
+    // because the T-shirt sleeve fabric wraps around the upper arm.
+    // Only the forearm and hands should occlude the chest when crossing in front.
     const forearmRadius = Math.max(shoulderSpanWorld * 0.10, 0.03);
 
-    const lsPos = new THREE.Vector3();
-    const rsPos = new THREE.Vector3();
-    toWorld(ls, lsPos);
-    toWorld(rs, rsPos);
-
-    if (le && (le.visibility ?? 0.8) > 0.25) {
+    if (le && lw && (le.visibility ?? 0.8) > 0.25 && (lw.visibility ?? 0.8) > 0.25) {
       const lePos = new THREE.Vector3();
+      const lwPos = new THREE.Vector3();
       toWorld(le, lePos);
-      this._leftUpperArmMesh.visible = true;
-      this._positionCylinder(this._leftUpperArmMesh, lsPos, lePos, armRadius);
-
-      if (lw && (lw.visibility ?? 0.8) > 0.25) {
-        const lwPos = new THREE.Vector3();
-        toWorld(lw, lwPos);
-        this._leftForearmMesh.visible = true;
-        this._positionCylinder(this._leftForearmMesh, lePos, lwPos, forearmRadius);
-      } else {
-        this._leftForearmMesh.visible = false;
-      }
+      toWorld(lw, lwPos);
+      this._leftForearmMesh.visible = true;
+      this._positionCylinder(this._leftForearmMesh, lePos, lwPos, forearmRadius);
     } else {
-      this._leftUpperArmMesh.visible = false;
       this._leftForearmMesh.visible = false;
     }
 
-    if (re && (re.visibility ?? 0.8) > 0.25) {
+    if (re && rw && (re.visibility ?? 0.8) > 0.25 && (rw.visibility ?? 0.8) > 0.25) {
       const rePos = new THREE.Vector3();
+      const rwPos = new THREE.Vector3();
       toWorld(re, rePos);
-      this._rightUpperArmMesh.visible = true;
-      this._positionCylinder(this._rightUpperArmMesh, rsPos, rePos, armRadius);
-
-      if (rw && (rw.visibility ?? 0.8) > 0.25) {
-        const rwPos = new THREE.Vector3();
-        toWorld(rw, rwPos);
-        this._rightForearmMesh.visible = true;
-        this._positionCylinder(this._rightForearmMesh, rePos, rwPos, forearmRadius);
-      } else {
-        this._rightForearmMesh.visible = false;
-      }
+      toWorld(rw, rwPos);
+      this._rightForearmMesh.visible = true;
+      this._positionCylinder(this._rightForearmMesh, rePos, rwPos, forearmRadius);
     } else {
-      this._rightUpperArmMesh.visible = false;
       this._rightForearmMesh.visible = false;
     }
   }
